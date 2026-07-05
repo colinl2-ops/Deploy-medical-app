@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260706-091716";
-const APP_RELEASE_LABEL = "Dose";
+const APP_BUILD = "20260706-092318";
+const APP_RELEASE_LABEL = "star";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -1522,8 +1522,7 @@ function updateMedicalCard() {
     .map((med) => `${med.frequency === "asRequired" ? "*" : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`)
     .join(", ");
   const medsLabel = meds || "None";
-  const onDemandLegend = meds.includes("*") ? " | * On-demand medication" : "";
-  dom.medicalCardText.textContent = `${profile.name} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${medsLabel}${onDemandLegend}`;
+  dom.medicalCardText.textContent = `${profile.name} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${medsLabel}`;
   dom.emergencyCallLink.href = profile.emergencyPhone ? `tel:${profile.emergencyPhone}` : "#";
 }
 
