@@ -5,7 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260705-000002";
+const APP_BUILD = "20260705-000004";
+const APP_RELEASE_LABEL = "Close-all update active";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -79,7 +80,7 @@ const dom = {
 };
 
 if (dom.buildInfo) {
-  dom.buildInfo.textContent = `Build: ${APP_BUILD}`;
+  dom.buildInfo.textContent = `Build: ${APP_BUILD} | ${APP_RELEASE_LABEL}`;
 }
 
 let state = loadState();
