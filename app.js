@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260705-000004";
-const APP_RELEASE_LABEL = "Close-all update active";
+const APP_BUILD = "20260705-000006";
+const APP_RELEASE_LABEL = "Close other windows only";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -112,7 +112,7 @@ function attemptWindowClose() {
 
 function requestCloseAllWindows() {
   if (dom.safetyMessage) {
-    dom.safetyMessage.textContent = "Closing open app windows...";
+    dom.safetyMessage.textContent = "Requested close for other open app windows.";
   }
   if (closeAllChannel) {
     closeAllChannel.postMessage({ type: "close-all" });
@@ -122,7 +122,6 @@ function requestCloseAllWindows() {
   } catch {
     // Ignore storage errors in private mode.
   }
-  attemptWindowClose();
 }
 
 function bindCloseAllButton() {
@@ -683,7 +682,7 @@ function markDose(dose, status, options = {}) {
     }
 
     const previous = lastTakenForMed(med.id);
-    if (previous?.timestamp && !options.force) {
+    if (previous?.timestamp && !options.add .force) {
       const minGapMs = minHoursBetweenDoses(med) * 60 * 60 * 1000;
       const gap = new Date() - new Date(previous.timestamp);
       if (gap < minGapMs) {
