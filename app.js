@@ -94,6 +94,7 @@ let alarmCooldownUntil = 0;
 let editingMedicationId = null;
 let editingProcedureId = null;
 let closeAllChannel = null;
+let closeAllClickBound = false;
 
 function attemptWindowClose() {
   // Browsers may only allow close for script-opened windows; this is best effort.
@@ -121,6 +122,26 @@ function requestCloseAllWindows() {
     // Ignore storage errors in private mode.
   }
   attemptWindowClose();
+}
+
+function bindCloseAllButton() {
+  if (closeAllClickBound) {
+    return;
+  }
+  closeAllClickBound = true;
+
+  // Delegate so the handler still works if layout changes move/recreate the button.
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const closeBtn = target.closest("#closeAllBtn");
+    if (!closeBtn) {
+      return;
+    }
+    requestCloseAllWindows();
+  });
 }
 
 function setupCloseAllListeners() {
@@ -2327,6 +2348,7 @@ applyForceRefreshFlow().then((reloading) => {
     return;
   }
   setupCloseAllListeners();
+  bindCloseAllButton();
   setupCollapsibleCards();
   bindEvents();
   resetProcedureEditMode();
