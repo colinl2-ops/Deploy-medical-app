@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260705-000006";
-const APP_RELEASE_LABEL = "Close other windows only";
+const APP_BUILD = "20260705-000007";
+const APP_RELEASE_LABEL = "Close sections button fixed";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -111,16 +111,27 @@ function attemptWindowClose() {
 }
 
 function requestCloseAllWindows() {
+  const cards = Array.from(document.querySelectorAll("main section.card"));
+  let closedCount = 0;
+
+  cards.forEach((card) => {
+    const toggle = card.querySelector(".card-toggle");
+    if (!toggle) {
+      return;
+    }
+    const isExpanded = toggle.getAttribute("aria-expanded") === "true";
+    if (!isExpanded) {
+      return;
+    }
+    card.classList.add("is-collapsed");
+    toggle.setAttribute("aria-expanded", "false");
+    closedCount += 1;
+  });
+
   if (dom.safetyMessage) {
-    dom.safetyMessage.textContent = "Requested close for other open app windows.";
-  }
-  if (closeAllChannel) {
-    closeAllChannel.postMessage({ type: "close-all" });
-  }
-  try {
-    localStorage.setItem(CLOSE_ALL_SIGNAL_KEY, String(Date.now()));
-  } catch {
-    // Ignore storage errors in private mode.
+    dom.safetyMessage.textContent = closedCount > 0
+      ? `Closed ${closedCount} open section${closedCount === 1 ? "" : "s"}.`
+      : "All sections are already closed.";
   }
 }
 
