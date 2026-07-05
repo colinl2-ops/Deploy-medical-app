@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260705-224916";
-const APP_RELEASE_LABEL = "Asterisk";
+const APP_BUILD = "20260706-091716";
+const APP_RELEASE_LABEL = "Dose";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -1502,10 +1502,24 @@ function syncProfileForm() {
   dom.switchProfileBtn.title = hasTwoProfiles ? "Switch between users" : "Add second user first";
 }
 
+function emergencyDoseAbbrev(med) {
+  if (med.frequency === "asRequired") {
+    return "";
+  }
+
+  const dailyDose = pillsNeededPerDay(med);
+  if (!Number.isFinite(dailyDose) || dailyDose <= 0) {
+    return "";
+  }
+
+  const formatted = Number.isInteger(dailyDose) ? String(dailyDose) : String(Number(dailyDose.toFixed(2)));
+  return ` (${formatted})`;
+}
+
 function updateMedicalCard() {
   const profile = getActiveProfile();
   const meds = medsForActiveProfile()
-    .map((med) => `${med.frequency === "asRequired" ? "*" : ""}${med.name} ${med.strength}`)
+    .map((med) => `${med.frequency === "asRequired" ? "*" : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`)
     .join(", ");
   const medsLabel = meds || "None";
   const onDemandLegend = meds.includes("*") ? " | * On-demand medication" : "";
