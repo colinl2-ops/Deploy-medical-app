@@ -418,11 +418,18 @@ button:disabled {
   font-size: 0.95rem;
 }
 
-.emergency-fab {
+.fab-actions {
   position: fixed;
   right: 1rem;
   bottom: 1rem;
   z-index: 40;
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.emergency-fab {
+  position: static;
   background: var(--danger);
   color: #fff;
   font-size: 1.15rem;
@@ -430,10 +437,7 @@ button:disabled {
 }
 
 .close-fab {
-  position: fixed;
-  right: 9.2rem;
-  bottom: 1rem;
-  z-index: 40;
+  position: static;
   background: #2f3e46;
   color: #fff;
   font-size: 1.15rem;
@@ -499,6 +503,11 @@ dialog::backdrop {
 
   .grid-form {
     grid-template-columns: 1fr;
+  }
+
+  .fab-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .timeline-item,

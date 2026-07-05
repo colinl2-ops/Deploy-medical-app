@@ -104,11 +104,14 @@ function attemptWindowClose() {
   }
   window.close();
   if (!window.closed) {
-    window.location.replace("about:blank");
+    document.body.innerHTML = "<main style='padding:2rem;font-family:Georgia,serif'><h1>Window closed</h1><p>You can now close this tab.</p></main>";
   }
 }
 
 function requestCloseAllWindows() {
+  if (dom.safetyMessage) {
+    dom.safetyMessage.textContent = "Closing open app windows...";
+  }
   if (closeAllChannel) {
     closeAllChannel.postMessage({ type: "close-all" });
   }
