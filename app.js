@@ -5,7 +5,9 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260704-123500";
+const APP_BUILD = "20260705-000001";
+const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
+const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -38,6 +40,7 @@ const dom = {
   highContrastBtn: byId("highContrastBtn"),
   safetyMessage: byId("safetyMessage"),
   procedureMessage: byId("procedureMessage"),
+  closeAllBtn: byId("closeAllBtn"),
   emergencyBtn: byId("emergencyBtn"),
   emergencyDialog: byId("emergencyDialog"),
   medicalCardText: byId("medicalCardText"),
@@ -90,6 +93,49 @@ let muteAlarmsUntilKey = null;
 let alarmCooldownUntil = 0;
 let editingMedicationId = null;
 let editingProcedureId = null;
+let closeAllChannel = null;
+
+function attemptWindowClose() {
+  // Browsers may only allow close for script-opened windows; this is best effort.
+  try {
+    window.open("", "_self");
+  } catch {
+    // Ignore and continue to close attempt.
+  }
+  window.close();
+  if (!window.closed) {
+    window.location.replace("about:blank");
+  }
+}
+
+function requestCloseAllWindows() {
+  if (closeAllChannel) {
+    closeAllChannel.postMessage({ type: "close-all" });
+  }
+  try {
+    localStorage.setItem(CLOSE_ALL_SIGNAL_KEY, String(Date.now()));
+  } catch {
+    // Ignore storage errors in private mode.
+  }
+  attemptWindowClose();
+}
+
+function setupCloseAllListeners() {
+  if (window.BroadcastChannel) {
+    closeAllChannel = new BroadcastChannel(CLOSE_ALL_CHANNEL);
+    closeAllChannel.onmessage = (event) => {
+      if (event?.data?.type === "close-all") {
+        attemptWindowClose();
+      }
+    };
+  }
+
+  window.addEventListener("storage", (event) => {
+    if (event.key === CLOSE_ALL_SIGNAL_KEY && event.newValue) {
+      attemptWindowClose();
+    }
+  });
+}
 
 function makeId() {
   if (crypto?.randomUUID) {
@@ -2076,6 +2122,7 @@ function bindEvents() {
     renderAll();
   });
 
+  dom.closeAllBtn?.addEventListener("click", requestCloseAllWindows);
   dom.emergencyBtn.addEventListener("click", () => dom.emergencyDialog.showModal());
   dom.closeEmergencyBtn.addEventListener("click", () => dom.emergencyDialog.close());
 
@@ -2235,6 +2282,15 @@ function shouldRegisterServiceWorker() {
 }
 
 if ("serviceWorker" in navigator) {
+  let refreshTriggered = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshTriggered) {
+      return;
+    }
+    refreshTriggered = true;
+    window.location.reload();
+  });
+
   window.addEventListener("load", () => {
     if (!shouldRegisterServiceWorker()) {
       return;
@@ -2248,7 +2304,8 @@ if ("serviceWorker" in navigator) {
         }
         worker.addEventListener("statechange", () => {
           if (worker.state === "installed" && navigator.serviceWorker.controller) {
-            dom.safetyMessage.textContent = "App updated in the background. Refresh to use the latest version.";
+            worker.postMessage({ type: "SKIP_WAITING" });
+            dom.safetyMessage.textContent = "Updating app to latest version...";
           }
         });
       });
@@ -2266,6 +2323,7 @@ applyForceRefreshFlow().then((reloading) => {
   if (reloading) {
     return;
   }
+  setupCloseAllListeners();
   setupCollapsibleCards();
   bindEvents();
   resetProcedureEditMode();

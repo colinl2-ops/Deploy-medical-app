@@ -429,6 +429,17 @@ button:disabled {
   box-shadow: 0 12px 24px rgba(147, 34, 34, 0.28);
 }
 
+.close-fab {
+  position: fixed;
+  right: 9.2rem;
+  bottom: 1rem;
+  z-index: 40;
+  background: #2f3e46;
+  color: #fff;
+  font-size: 1.15rem;
+  box-shadow: 0 12px 24px rgba(22, 29, 34, 0.28);
+}
+
 .alarm-overlay {
   position: fixed;
   inset: 0;
