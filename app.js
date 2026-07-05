@@ -1505,9 +1505,11 @@ function syncProfileForm() {
 function updateMedicalCard() {
   const profile = getActiveProfile();
   const meds = medsForActiveProfile()
-    .map((med) => `${med.name} ${med.strength}`)
+    .map((med) => `${med.frequency === "asRequired" ? "*" : ""}${med.name} ${med.strength}`)
     .join(", ");
-  dom.medicalCardText.textContent = `${profile.name} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${meds || "None"}`;
+  const medsLabel = meds || "None";
+  const onDemandLegend = meds.includes("*") ? " | * On-demand medication" : "";
+  dom.medicalCardText.textContent = `${profile.name} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${medsLabel}${onDemandLegend}`;
   dom.emergencyCallLink.href = profile.emergencyPhone ? `tel:${profile.emergencyPhone}` : "#";
 }
 
