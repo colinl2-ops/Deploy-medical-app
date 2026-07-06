@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260706-095506";
-const APP_RELEASE_LABEL = "update med";
+const APP_BUILD = "20260706-200903";
+const APP_RELEASE_LABEL = "brackets";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -1769,7 +1769,7 @@ function exportAmPmList() {
       pmRows.push({
         minutes: Number.POSITIVE_INFINITY,
         medName: med.name,
-        line: `- [ ] ${med.name}${med.strength ? ` (${med.strength})` : ""} - time not set`
+        line: `- ${med.name}${med.strength ? ` (${med.strength})` : ""} - time not set`
       });
       return;
     }
@@ -1777,7 +1777,7 @@ function exportAmPmList() {
     times.forEach((time) => {
       const hour = Number(String(time).split(":")[0]);
       const minutes = toMinutes(time);
-      const line = `- [ ] ${med.name}${med.strength ? ` (${med.strength})` : ""} - ${getDoseQuantityForTime(med, time)} ${doseUnit(med)} at ${time}`;
+      const line = `- ${med.name}${med.strength ? ` (${med.strength})` : ""} - ${getDoseQuantityForTime(med, time)} ${doseUnit(med)} at ${time}`;
       if (Number.isFinite(hour) && hour < 12) {
         amRows.push({ minutes, medName: med.name, line });
       } else {
@@ -1793,7 +1793,7 @@ function exportAmPmList() {
   lines.push("");
   lines.push("AM");
   if (amRows.length === 0) {
-    lines.push("- [ ] None");
+    lines.push("- None");
   } else {
     amRows
       .sort((a, b) => a.minutes - b.minutes || a.medName.localeCompare(b.medName))
@@ -1802,7 +1802,7 @@ function exportAmPmList() {
   lines.push("");
   lines.push("PM");
   if (pmRows.length === 0) {
-    lines.push("- [ ] None");
+    lines.push("- None");
   } else {
     pmRows
       .sort((a, b) => a.minutes - b.minutes || a.medName.localeCompare(b.medName))
