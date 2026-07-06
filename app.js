@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260707-082609";
-const APP_RELEASE_LABEL = "move2";
+const APP_BUILD = "20260707-095506";
+const APP_RELEASE_LABEL = "move3";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -1148,11 +1148,17 @@ function renderMeds(meds) {
         dom.medCancelEditBtn.classList.remove("hidden");
       }
       dom.safetyMessage.textContent = `Editing ${med.name}. Update fields and click Save Changes.`;
-      requestAnimationFrame(() => {
-        const formTop = dom.medForm.getBoundingClientRect().top + window.scrollY;
-        window.scrollTo({ top: Math.max(0, formTop - 12), behavior: "smooth" });
+      setTimeout(() => {
+        const target = dom.medForm.closest("section.card") || dom.medForm;
+        const targetTop = target.getBoundingClientRect().top + window.pageYOffset;
+        const scrollTop = Math.max(0, targetTop - 12);
+        const scroller = document.scrollingElement || document.documentElement || document.body;
+        if (scroller && typeof scroller.scrollTo === "function") {
+          scroller.scrollTo({ top: scrollTop, behavior: "auto" });
+        }
+        window.scrollTo(0, scrollTop);
         dom.medForm.name?.focus?.({ preventScroll: true });
-      });
+      }, 100);
     });
 
     const prnBtn = node.querySelector(".log-prn-btn");
