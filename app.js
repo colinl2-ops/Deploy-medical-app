@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260706-234305";
-const APP_RELEASE_LABEL = "Group v1";
+const APP_BUILD = "20260707-070500";
+const APP_RELEASE_LABEL = "wafer";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -850,6 +850,8 @@ function doseUnit(med) {
     case "patch": return "patch(es)";
     case "inhaler": return "puff(s)";
     case "injection": return "unit(s)";
+    case "spray": return "spray(s)";
+    case "wafer": return "wafer(s)";
     default: return "tablet(s)";
   }
 }
@@ -862,6 +864,8 @@ function friendlyForm(form) {
     case "patch": return "Patch";
     case "inhaler": return "Inhaler";
     case "injection": return "Injection";
+    case "spray": return "Spray";
+    case "wafer": return "Wafer";
     default: return "Tablet";
   }
 }
