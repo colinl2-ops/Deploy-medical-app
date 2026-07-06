@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260707-070500";
-const APP_RELEASE_LABEL = "wafer";
+const APP_BUILD = "20260707-081346";
+const APP_RELEASE_LABEL = "move";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -1148,7 +1148,11 @@ function renderMeds(meds) {
         dom.medCancelEditBtn.classList.remove("hidden");
       }
       dom.safetyMessage.textContent = `Editing ${med.name}. Update fields and click Save Changes.`;
-      dom.medForm.scrollIntoView({ behavior: "smooth", block: "start" });
+      requestAnimationFrame(() => {
+        const formTop = dom.medForm.getBoundingClientRect().top + window.scrollY;
+        window.scrollTo({ top: Math.max(0, formTop - 12), behavior: "smooth" });
+        dom.medForm.name?.focus?.({ preventScroll: true });
+      });
     });
 
     const prnBtn = node.querySelector(".log-prn-btn");
