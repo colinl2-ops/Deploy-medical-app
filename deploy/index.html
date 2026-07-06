@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0f4c5c" />
+    <meta name="description" content="Senior-friendly medication manager with reminders, refill tracking, safety checks, caregiver sharing, and emergency support." />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
+    <link rel="stylesheet" href="styles.css?v=20260707-095506" />
+    <title>Medication Helper</title>
+  </head>
+  <body>
+    <header class="hero">
+      <div>
+        <p class="kicker">Senior Medication Assistant</p>
+        <h1>Medication Helper</h1>
+        <p class="subtitle">One screen for daily doses, reminders, refill tracking, and caregiver updates.</p>
+        <p id="buildInfo" class="tiny-note">Build: loading...</p>
+      </div>
+      <div class="hero-actions">
+        <button id="highContrastBtn" class="secondary-btn" type="button">High Contrast</button>
+        <button id="installAppBtn" class="secondary-btn hidden" type="button">Install App</button>
+      </div>
+    </header>
+
+    <div class="fab-actions" aria-label="Quick actions">
+      <button id="closeAllBtn" class="close-fab" type="button">Collapse All</button>
+      <button id="emergencyBtn" class="emergency-fab" type="button">Emergency</button>
+    </div>
+
+    <main>
+      <section class="card dashboard-top">
+        <h2>Running Out Soon</h2>
+        <p id="runningOutSummary" class="summary">No low-stock medications right now.</p>
+        <div id="runningOutList" class="chip-list"></div>
+      </section>
+
+      <section class="card">
+        <h2>Order Priority</h2>
+        <p id="orderUserName" class="tiny-note"></p>
+        <p id="orderSummary" class="summary">No medications yet.</p>
+        <ul id="orderList" class="plain-list"></ul>
+      </section>
+
+      <section class="card">
+        <h2>Profile and Contacts</h2>
+        <form id="profileForm" class="grid-form">
+          <label>
+            Person name
+            <input name="profileName" required placeholder="Example: Asha" />
+          </label>
+          <label>
+            Emergency contact
+            <input name="emergencyPhone" placeholder="+1..." />
+          </label>
+          <label>
+            Caregiver name
+            <input name="caregiverName" placeholder="Family member" />
+          </label>
+          <label>
+            Caregiver phone
+            <input name="caregiverPhone" placeholder="+1..." />
+          </label>
+          <label>
+            Doctor phone
+            <input name="doctorPhone" placeholder="+1..." />
+          </label>
+          <label>
+            Pharmacy phone
+            <input name="pharmacyPhone" placeholder="+1..." />
+          </label>
+          <label>
+            Blood group
+            <input name="bloodGroup" placeholder="A+, O-, etc" />
+          </label>
+          <label>
+            Voice language
+            <input name="voiceLang" placeholder="en-US, hi-IN, ta-IN" value="en-US" />
+          </label>
+          <label class="full">
+            Conditions
+            <textarea name="conditions" rows="2" placeholder="Diabetes, hypertension"></textarea>
+          </label>
+          <label class="full">
+            Allergies
+            <textarea name="allergies" rows="2" placeholder="Penicillin, ibuprofen"></textarea>
+          </label>
+          <div class="button-row full">
+            <button class="primary-btn" type="submit">Save Profile</button>
+            <button id="addProfileBtn" class="secondary-btn" type="button">Add Second User</button>
+            <button id="switchProfileBtn" class="secondary-btn" type="button">Switch User</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Add/Update Medicine</h2>
+        <p class="summary">Includes photo, schedule complexity, stock count, and safety checks.</p>
+        <form id="medForm" class="grid-form">
+          <label>
+            Medication name
+            <input name="name" required placeholder="Metformin" />
+          </label>
+          <label>
+            Strength
+            <input name="strength" required placeholder="500 mg" />
+          </label>
+          <label>
+            Medication form
+            <select name="form">
+              <option value="tablet">Tablet / Capsule</option>
+              <option value="cream">Cream / Ointment</option>
+              <option value="drops">Drops (eye, ear, nose)</option>
+              <option value="liquid">Liquid / Syrup</option>
+              <option value="patch">Patch</option>
+              <option value="inhaler">Inhaler</option>
+              <option value="injection">Injection</option>
+              <option value="spray">Spray</option>
+              <option value="wafer">Wafer</option>
+            </select>
+          </label>
+          <label>
+            What it is for
+            <input name="purpose" required placeholder="For blood sugar" />
+          </label>
+          <label>
+            Units in stock
+            <input name="stock" type="number" min="0" step="1" required placeholder="30" />
+          </label>
+          <label>
+            Units per dose
+            <input name="pillsPerDose" type="number" min="0.25" step="0.25" value="1" required />
+          </label>
+          <label>
+            Number of repeats
+            <input name="repeats" type="number" min="0" step="1" value="0" />
+          </label>
+          <label>
+            Start date
+            <input name="startDate" type="date" />
+          </label>
+          <label>
+            Times (comma separated HH:MM)
+            <input name="times" placeholder="08:00, 19:00" />
+          </label>
+          <label>
+            Dose plan by time
+            <input name="dosePlan" placeholder="08:00=1, 19:00=1" />
+          </label>
+          <label>
+            Food timing
+            <select name="foodRule" required>
+              <option value="none">No food rule</option>
+              <option value="before">Before food</option>
+              <option value="after">After food</option>
+              <option value="with">With food</option>
+            </select>
+          </label>
+          <label>
+            Frequency
+            <select name="frequency" required>
+              <option value="daily">Daily</option>
+              <option value="twiceDaily">Twice daily</option>
+              <option value="everyOtherDay">Every other day</option>
+              <option value="weekly">Weekly</option>
+              <option value="asRequired">As required (when needed)</option>
+            </select>
+          </label>
+          <label>
+            Weekly days (for weekly)
+            <input name="weeklyDays" placeholder="1,3,5 (Mon,Wed,Fri)" />
+          </label>
+          <label>
+            Barcode (optional)
+            <input name="barcode" placeholder="Pack barcode" />
+          </label>
+          <label>
+            Photo of pill/bottle
+            <input id="photoInput" name="photo" type="file" accept="image/*" />
+          </label>
+          <label class="full">
+            Notes
+            <textarea name="notes" rows="2" placeholder="Keep away from sunlight"></textarea>
+          </label>
+          <div class="button-row full">
+            <button id="medSubmitBtn" class="primary-btn" type="submit">Save Medication</button>
+            <button id="medCancelEditBtn" class="secondary-btn hidden" type="button">Cancel Edit</button>
+          </div>
+        </form>
+        <p class="tiny-note">Use dose plan when morning and night quantities differ. Example: 08:00=1, 19:00=2.</p>
+        <p id="safetyMessage" class="warn-text" aria-live="polite"></p>
+      </section>
+
+      <section class="card">
+        <h2>Today Timeline</h2>
+        <p id="todaySummary" class="summary">No schedule yet.</p>
+        <div id="timeline" class="timeline" aria-live="polite"></div>
+        <div class="button-row">
+          <button id="markMorningTakenBtn" class="primary-btn" type="button">Mark All Morning Taken</button>
+          <button id="markEveningTakenBtn" class="secondary-btn" type="button">Mark All Evening Taken</button>
+        </div>
+        <div id="todayTimelineActions" class="button-row">
+          <button id="startVoiceCmdBtn" class="secondary-btn" type="button">Voice Command</button>
+          <button id="exportCsvBtn" class="secondary-btn" type="button">Export CSV</button>
+          <button id="exportMedListBtn" class="secondary-btn" type="button">Export Med List</button>
+          <button id="exportAmPmBtn" class="secondary-btn" type="button">Export AM/PM List</button>
+          <button id="printReportBtn" class="secondary-btn" type="button">Print Summary</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Medication List</h2>
+        <div id="medList" class="med-list"></div>
+      </section>
+
+      <section class="card">
+        <h2>Adherence and Trends</h2>
+        <p id="adherenceSummary" class="summary">No adherence data yet.</p>
+        <ul id="trendList" class="plain-list"></ul>
+        <div class="button-row">
+          <button id="catchUpBtn" class="primary-btn" type="button">Catch Up Overdue</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Caregiver and Refill Actions</h2>
+        <div class="button-row">
+          <button id="shareCaregiverBtn" class="primary-btn" type="button">Share Status</button>
+          <button id="notifyCaregiverBtn" class="secondary-btn" type="button">Notify Missed Dose</button>
+          <button id="requestRefillBtn" class="secondary-btn" type="button">Request Refill</button>
+          <button id="callDoctorBtn" class="secondary-btn" type="button">Call Doctor</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Backup and Restore</h2>
+        <div class="button-row">
+          <button id="exportBackupBtn" class="secondary-btn" type="button">Export Backup</button>
+          <label class="file-label secondary-btn">
+            Restore Backup
+            <input id="importBackupInput" type="file" accept="application/json" />
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Procedures</h2>
+        <form id="procedureForm" class="grid-form">
+          <label>
+            Procedure date
+            <input name="procedureDate" required placeholder="YYYY or YYYY-MM or YYYY-MM-DD" />
+          </label>
+          <label>
+            Procedure name
+            <input name="procedureName" required placeholder="Echocardiogram" />
+          </label>
+          <label>
+            Doctor name (optional)
+            <input name="procedureDoctorName" placeholder="Dr. Kumar" />
+          </label>
+          <label>
+            Notes (optional)
+            <input name="procedureNotes" placeholder="Follow-up in 3 months" />
+          </label>
+          <div class="button-row full">
+            <button id="procedureSubmitBtn" class="primary-btn" type="submit">Save Procedure</button>
+            <button id="procedureCancelEditBtn" class="secondary-btn hidden" type="button">Cancel Edit</button>
+          </div>
+        </form>
+        <p id="procedureMessage" class="warn-text" aria-live="polite"></p>
+        <div class="button-row">
+          <button id="exportProcedureCsvBtn" class="secondary-btn" type="button">Export Procedures CSV</button>
+        </div>
+        <div id="procedureList" class="procedure-list"></div>
+      </section>
+    </main>
+
+    <dialog id="emergencyDialog">
+      <h2>Emergency Card</h2>
+      <p id="medicalCardText"></p>
+      <div class="button-row">
+        <a id="emergencyCallLink" class="primary-btn" href="#">Call Emergency Contact</a>
+        <button id="closeEmergencyBtn" class="secondary-btn" type="button">Close</button>
+      </div>
+      <p class="tiny-note">* means on-demand (as needed) medication. Tip: take a screenshot of this card and set it as lock-screen information.</p>
+    </dialog>
+
+    <section id="alarmOverlay" class="alarm-overlay hidden" aria-live="assertive" aria-hidden="true" style="display: none !important;">
+      <div class="alarm-panel">
+        <h2 id="alarmTitle">Medication Reminder</h2>
+        <p id="alarmMessage"></p>
+        <div class="button-row">
+          <button id="alarmTakenBtn" class="primary-btn" type="button">Taken</button>
+          <button id="alarmSkippedBtn" class="danger-btn" type="button">Skipped</button>
+          <button id="alarmSnoozeBtn" class="secondary-btn" type="button">Snooze 10 min</button>
+          <button id="alarmDismissBtn" class="secondary-btn" type="button">Silence</button>
+          <button id="alarmMuteTodayBtn" class="secondary-btn" type="button">Mute Today</button>
+        </div>
+      </div>
+    </section>
+
+    <template id="medCardTemplate">
+      <article class="med-card">
+        <img class="med-photo" alt="Medication photo" />
+        <div class="med-main">
+          <h3 class="med-name"></h3>
+          <p class="med-purpose"></p>
+          <p class="med-times"></p>
+          <p class="med-dose-plan"></p>
+          <p class="med-schedule"></p>
+          <p class="med-days"></p>
+          <p class="med-notes"></p>
+          <div class="chip-row">
+            <span class="chip food-chip"></span>
+            <span class="chip freq-chip"></span>
+            <span class="chip form-chip"></span>
+          </div>
+        </div>
+        <div class="card-actions">
+          <button class="edit-btn secondary-btn" type="button">Edit</button>
+          <button class="log-prn-btn primary-btn hidden" type="button">Log dose now</button>
+          <button class="danger-btn" type="button">Remove</button>
+        </div>
+      </article>
+    </template>
+
+    <template id="timelineItemTemplate">
+      <article class="timeline-item">
+        <div>
+          <h3 class="time-title"></h3>
+          <p class="time-meta"></p>
+          <p class="time-datekey"></p>
+          <p class="time-state"></p>
+        </div>
+        <div class="card-actions">
+          <button class="take-btn" type="button">Taken</button>
+          <button class="untake-btn secondary-btn" type="button">Untake</button>
+          <button class="skip-btn" type="button">Skipped</button>
+          <button class="snooze-btn" type="button">Snooze 10 min</button>
+        </div>
+      </article>
+    </template>
+
+    <template id="procedureCardTemplate">
+      <article class="procedure-card">
+        <div class="procedure-main">
+          <p class="procedure-summary"></p>
+        </div>
+        <div class="card-actions">
+          <button class="procedure-edit-btn secondary-btn" type="button" aria-label="Edit procedure" title="Edit procedure">E</button>
+          <button class="procedure-delete-btn danger-btn" type="button" aria-label="Delete procedure" title="Delete procedure">D</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js?v=20260707-095506" defer></script>
+  </body>
+</html>
