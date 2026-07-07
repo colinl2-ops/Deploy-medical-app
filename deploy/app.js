@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260707-095506";
-const APP_RELEASE_LABEL = "move3";
+const APP_BUILD = "20260707-100333";
+const APP_RELEASE_LABEL = "move4";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -1149,7 +1149,7 @@ function renderMeds(meds) {
       }
       dom.safetyMessage.textContent = `Editing ${med.name}. Update fields and click Save Changes.`;
       setTimeout(() => {
-        const target = dom.medForm.closest("section.card") || dom.medForm;
+        const target = document.getElementById("medFormTarget") || dom.medForm.closest("section.card") || dom.medForm;
         const targetTop = target.getBoundingClientRect().top + window.pageYOffset;
         const scrollTop = Math.max(0, targetTop - 12);
         const scroller = document.scrollingElement || document.documentElement || document.body;
