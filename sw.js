@@ -1,5 +1,5 @@
-const CACHE_NAME = "med-helper-cache-v20260707100541";
-const ASSETS = ["./", "./index.html", "./styles.css?v=20260707-100541", "./app.js?v=20260707-100541", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png"];
+const CACHE_NAME = "med-helper-cache-v20260707100909";
+const ASSETS = ["./", "./index.html", "./styles.css?v=20260707-100909", "./app.js?v=20260707-100909", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {

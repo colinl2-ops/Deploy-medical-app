@@ -90,6 +90,13 @@ main {
   padding: 1rem;
 }
 
+.form-anchor {
+  display: block;
+  height: 1px;
+  margin: 0;
+  scroll-margin-top: 1rem;
+}
+
 .card-toggle {
   width: 100%;
   border: 0;

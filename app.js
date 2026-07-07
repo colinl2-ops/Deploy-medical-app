@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260707-100541";
-const APP_RELEASE_LABEL = "move4";
+const APP_BUILD = "20260707-100909";
+const APP_RELEASE_LABEL = "move5";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -1152,6 +1152,10 @@ function renderMeds(meds) {
         const target = document.getElementById("medFormTarget") || dom.medForm.closest("section.card") || dom.medForm;
         const targetTop = target.getBoundingClientRect().top + window.pageYOffset;
         const scrollTop = Math.max(0, targetTop - 12);
+        if (target.id) {
+          window.location.hash = target.id;
+        }
+        target.focus?.({ preventScroll: true });
         const scroller = document.scrollingElement || document.documentElement || document.body;
         if (scroller && typeof scroller.scrollTo === "function") {
           scroller.scrollTo({ top: scrollTop, behavior: "auto" });
