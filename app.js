@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260707-100909";
-const APP_RELEASE_LABEL = "move5";
+const APP_BUILD = "20260707-101947";
+const APP_RELEASE_LABEL = "move6";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -1148,8 +1148,9 @@ function renderMeds(meds) {
         dom.medCancelEditBtn.classList.remove("hidden");
       }
       dom.safetyMessage.textContent = `Editing ${med.name}. Update fields and click Save Changes.`;
+      const jumpTarget = openMedicationFormCard();
       setTimeout(() => {
-        const target = document.getElementById("medFormTarget") || dom.medForm.closest("section.card") || dom.medForm;
+        const target = jumpTarget || document.getElementById("medFormTarget") || dom.medForm.closest("section.card") || dom.medForm;
         const targetTop = target.getBoundingClientRect().top + window.pageYOffset;
         const scrollTop = Math.max(0, targetTop - 12);
         if (target.id) {
@@ -1993,6 +1994,18 @@ function setupCollapsibleCards() {
 
     card.dataset.collapsibleReady = "true";
   });
+}
+
+function openMedicationFormCard() {
+  const target = document.getElementById("medFormTarget");
+  const card = target?.nextElementSibling?.classList?.contains("card") ? target.nextElementSibling : dom.medForm?.closest("section.card");
+  const toggleBtn = card?.querySelector(".card-toggle");
+
+  if (card && card.classList.contains("is-collapsed") && toggleBtn) {
+    toggleBtn.click();
+  }
+
+  return target || card || dom.medForm;
 }
 
 function bindEvents() {
