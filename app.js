@@ -83,6 +83,25 @@ if (dom.buildInfo) {
   dom.buildInfo.textContent = `Build: ${APP_BUILD} | ${APP_RELEASE_LABEL}`;
 }
 
+const stateApi = createStateApi({
+  keys: {
+    STORAGE_KEY,
+    BACKUP_STORAGE_KEY,
+    MEDS_BACKUP_KEY,
+    RECOVERY_SNAPSHOT_KEY,
+    LEGACY_MED_LIST_KEY
+  },
+  helpers: {
+    makeId,
+    defaultProfile,
+    parseJSON,
+    toDateKey,
+    fixMedicationDosePlan
+  }
+});
+
+const uiApi = createUiApi();
+
 let state = loadState();
 // Immediately save to persist any migrations/fixes applied during load
 saveState();
@@ -204,217 +223,31 @@ function parseJSON(raw) {
 }
 
 function buildDefaultState() {
-  const first = defaultProfile();
-  return {
-    profiles: [first],
-    activeProfileId: first.id,
-    medications: [],
-    procedures: [],
-    doses: [],
-    settings: { highContrast: false }
-  };
+  return stateApi.buildDefaultState();
 }
 
 function normalizeState(parsed) {
-  if (!parsed || !Array.isArray(parsed.profiles) || parsed.profiles.length === 0) {
-    return null;
-  }
-
-  const profiles = parsed.profiles;
-  const resolvedActiveProfileId = profiles.some((profile) => profile.id === parsed.activeProfileId)
-    ? parsed.activeProfileId
-    : profiles[0].id;
-
-  const migratedMeds = (parsed.medications || []).map((med) => ({
-    ...med,
-    profileId: med.profileId || resolvedActiveProfileId
-  }));
-
-  const migratedDoses = (parsed.doses || []).map((dose) => ({
-    ...dose,
-    profileId: dose.profileId || resolvedActiveProfileId
-  }));
-
-  const migratedProcedures = (parsed.procedures || []).map((procedure) => ({
-    ...procedure,
-    profileId: procedure.profileId || resolvedActiveProfileId
-  }));
-
-  return {
-    profiles,
-    activeProfileId: resolvedActiveProfileId,
-    medications: migratedMeds,
-    procedures: migratedProcedures,
-    doses: migratedDoses,
-    settings: parsed.settings || { highContrast: false }
-  };
-}
-
-function recoverLegacyMedications(activeProfileId) {
-  const legacy = parseJSON(localStorage.getItem(LEGACY_MED_LIST_KEY) || "null");
-  if (!Array.isArray(legacy) || legacy.length === 0) {
-    return [];
-  }
-
-  return legacy.map((item) => ({
-    id: item.id || makeId(),
-    profileId: activeProfileId,
-    name: item.name || "Medication",
-    strength: item.dose || "",
-    purpose: "Imported from older app",
-    stock: 0,
-    pillsPerDose: 1,
-    form: "tablet",
-    repeats: 0,
-    times: ["08:00"],
-    foodRule: "none",
-    frequency: "daily",
-    weeklyDays: [],
-    barcode: "",
-    notes: item.notes || "",
-    startDate: toDateKey(new Date()),
-    photoDataUrl: ""
-  }));
-}
-
-function recoverMedsBackup(activeProfileId) {
-  const backup = parseJSON(localStorage.getItem(MEDS_BACKUP_KEY) || "null");
-  if (!Array.isArray(backup) || backup.length === 0) {
-    return [];
-  }
-
-  return backup
-    .filter((item) => item && typeof item === "object" && item.name)
-    .map((item) => ({
-      id: item.id || makeId(),
-      profileId: item.profileId || activeProfileId,
-      name: item.name || "Medication",
-      strength: item.strength || item.dose || "",
-      purpose: item.purpose || "Imported from backup",
-      stock: Number(item.stock ?? 0),
-      pillsPerDose: Number(item.pillsPerDose ?? 1),
-      form: item.form || "tablet",
-      repeats: Number(item.repeats ?? 0),
-      times: Array.isArray(item.times) && item.times.length > 0 ? item.times : ["08:00"],
-      foodRule: item.foodRule || "none",
-      frequency: item.frequency || "daily",
-      weeklyDays: Array.isArray(item.weeklyDays) ? item.weeklyDays : [],
-      barcode: item.barcode || "",
-      notes: item.notes || "",
-      startDate: item.startDate || toDateKey(new Date()),
-      photoDataUrl: item.photoDataUrl || ""
-    }));
-}
-
-function recoverMedsFromStateSnapshot(rawState, activeProfileId) {
-  const normalized = normalizeState(rawState);
-  if (!normalized || !Array.isArray(normalized.medications) || normalized.medications.length === 0) {
-    return [];
-  }
-
-  return normalized.medications.map((item) => ({
-    ...item,
-    profileId: item.profileId || activeProfileId
-  }));
+  return stateApi.normalizeState(parsed);
 }
 
 function loadState() {
-  const primary = normalizeState(parseJSON(localStorage.getItem(STORAGE_KEY) || "null"));
-  if (primary) {
-    if (primary.medications.length === 0) {
-      const medsBackup = recoverMedsBackup(primary.activeProfileId);
-      if (medsBackup.length > 0) {
-        primary.medications = medsBackup;
-      } else {
-        const recovered = recoverLegacyMedications(primary.activeProfileId);
-        if (recovered.length > 0) {
-          primary.medications = recovered;
-        } else {
-          const snapshotMeds = recoverMedsFromStateSnapshot(
-            parseJSON(localStorage.getItem(RECOVERY_SNAPSHOT_KEY) || "null"),
-            primary.activeProfileId
-          );
-          if (snapshotMeds.length > 0) {
-            primary.medications = snapshotMeds;
-          }
-        }
-      }
-    }
-    primary.medications = primary.medications.map((med) => fixMedicationDosePlan(med));
-    return primary;
-  }
-
-  const backup = normalizeState(parseJSON(localStorage.getItem(BACKUP_STORAGE_KEY) || "null"));
-  if (backup) {
-    if (backup.medications.length === 0) {
-      const snapshotMeds = recoverMedsFromStateSnapshot(
-        parseJSON(localStorage.getItem(RECOVERY_SNAPSHOT_KEY) || "null"),
-        backup.activeProfileId
-      );
-      if (snapshotMeds.length > 0) {
-        backup.medications = snapshotMeds;
-      }
-    }
-    backup.medications = backup.medications.map((med) => fixMedicationDosePlan(med));
-    return backup;
-  }
-
-  const fallback = buildDefaultState();
-  const medsBackup = recoverMedsBackup(fallback.activeProfileId);
-  if (medsBackup.length > 0) {
-    fallback.medications = medsBackup;
-    fallback.medications = fallback.medications.map((med) => fixMedicationDosePlan(med));
-    return fallback;
-  }
-
-  const snapshotMeds = recoverMedsFromStateSnapshot(
-    parseJSON(localStorage.getItem(RECOVERY_SNAPSHOT_KEY) || "null"),
-    fallback.activeProfileId
-  );
-  if (snapshotMeds.length > 0) {
-    fallback.medications = snapshotMeds;
-    fallback.medications = fallback.medications.map((med) => fixMedicationDosePlan(med));
-    return fallback;
-  }
-
-  const recovered = recoverLegacyMedications(fallback.activeProfileId);
-  if (recovered.length > 0) {
-    fallback.medications = recovered;
-    fallback.medications = fallback.medications.map((med) => fixMedicationDosePlan(med));
-  }
-  return fallback;
+  return stateApi.loadState();
 }
 
 function saveState() {
-  const serialized = JSON.stringify(state);
-  const nextMeds = Array.isArray(state.medications) ? state.medications : [];
-
-  localStorage.setItem(STORAGE_KEY, serialized);
-  localStorage.setItem(BACKUP_STORAGE_KEY, serialized);
-
-  if (nextMeds.length > 0) {
-    localStorage.setItem(MEDS_BACKUP_KEY, JSON.stringify(nextMeds));
-    localStorage.setItem(RECOVERY_SNAPSHOT_KEY, serialized);
-    return;
-  }
-
-  // Do not overwrite meds backup/snapshot with an empty list to avoid accidental data loss.
-  const existingMedsBackup = parseJSON(localStorage.getItem(MEDS_BACKUP_KEY) || "null");
-  if (!Array.isArray(existingMedsBackup)) {
-    localStorage.setItem(MEDS_BACKUP_KEY, JSON.stringify([]));
-  }
+  stateApi.saveState(state);
 }
 
 function getActiveProfile() {
-  return state.profiles.find((profile) => profile.id === state.activeProfileId) || state.profiles[0];
+  return stateApi.getActiveProfile(state);
 }
 
 function medsForActiveProfile() {
-  return state.medications.filter((med) => med.profileId === state.activeProfileId);
+  return stateApi.medsForActiveProfile(state);
 }
 
 function proceduresForActiveProfile() {
-  return state.procedures.filter((procedure) => procedure.profileId === state.activeProfileId);
+  return stateApi.proceduresForActiveProfile(state);
 }
 
 function toDateKey(date) {
@@ -1956,44 +1789,7 @@ function switchUser() {
 }
 
 function setupCollapsibleCards() {
-  const cards = Array.from(document.querySelectorAll("main section.card"));
-  cards.forEach((card, index) => {
-    if (card.dataset.collapsibleReady === "true") {
-      return;
-    }
-
-    const heading = card.querySelector("h2");
-    if (!heading) {
-      return;
-    }
-
-    const panelId = card.id ? `${card.id}-content` : `card-content-${index + 1}`;
-    const toggleBtn = document.createElement("button");
-    toggleBtn.type = "button";
-    toggleBtn.className = "card-toggle";
-    toggleBtn.setAttribute("aria-expanded", "false");
-    toggleBtn.setAttribute("aria-controls", panelId);
-    toggleBtn.innerHTML = `<span class="card-toggle-title">${heading.textContent || "Section"}</span><span class="card-toggle-icon" aria-hidden="true">▾</span>`;
-    heading.replaceWith(toggleBtn);
-
-    card.classList.add("is-collapsed");
-
-    const content = document.createElement("div");
-    content.className = "card-content";
-    content.id = panelId;
-
-    while (toggleBtn.nextSibling) {
-      content.appendChild(toggleBtn.nextSibling);
-    }
-    card.appendChild(content);
-
-    toggleBtn.addEventListener("click", () => {
-      const collapsed = card.classList.toggle("is-collapsed");
-      toggleBtn.setAttribute("aria-expanded", String(!collapsed));
-    });
-
-    card.dataset.collapsibleReady = "true";
-  });
+  uiApi.setupCollapsibleCards();
 }
 
 function openMedicationFormCard() {
