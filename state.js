@@ -216,6 +216,103 @@
       return state.procedures.filter((procedure) => procedure.profileId === state.activeProfileId);
     }
 
+    function parseTimes(raw) {
+      return String(raw || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(item));
+    }
+
+    function parseDosePlan(raw) {
+      const plan = {};
+
+      String(raw || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .forEach((entry) => {
+          const [timeRaw, qtyRaw] = entry.split("=").map((item) => item.trim());
+          const quantity = Number(qtyRaw);
+          if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(timeRaw) || !Number.isFinite(quantity) || quantity <= 0) {
+            return;
+          }
+          plan[timeRaw] = quantity;
+        });
+
+      return plan;
+    }
+
+    function normalizeDosePlan(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return {};
+      }
+
+      return Object.entries(value).reduce((plan, [time, quantity]) => {
+        if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
+          return plan;
+        }
+        const normalizedQuantity = Number(quantity);
+        if (!Number.isFinite(normalizedQuantity) || normalizedQuantity <= 0) {
+          return plan;
+        }
+        plan[time] = normalizedQuantity;
+        return plan;
+      }, {});
+    }
+
+    function parseWeeklyDays(raw) {
+      return String(raw || "")
+        .split(",")
+        .map((item) => Number(item.trim()))
+        .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6);
+    }
+
+    function isValidDateKey(value) {
+      return /^\d{4}-\d{2}-\d{2}$/.test(value);
+    }
+
+    function isValidPartialDate(value) {
+      return /^\d{4}(-\d{2}(-\d{2})?)?$/.test(value);
+    }
+
+    function procedureSortKey(value) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return value;
+      }
+      if (/^\d{4}-\d{2}$/.test(value)) {
+        return `${value}-00`;
+      }
+      if (/^\d{4}$/.test(value)) {
+        return `${value}-00-00`;
+      }
+      return "0000-00-00";
+    }
+
+    function recoverProfileMedicationVisibility(state, context) {
+      const { getActiveProfile, saveState } = context;
+      const profileIds = new Set(state.profiles.map((profile) => profile.id));
+      const activeId = getActiveProfile().id;
+      let didMutate = false;
+
+      state.medications.forEach((med) => {
+        if (!med.profileId || !profileIds.has(med.profileId)) {
+          med.profileId = activeId;
+          didMutate = true;
+        }
+      });
+
+      state.procedures.forEach((procedure) => {
+        if (!procedure.profileId || !profileIds.has(procedure.profileId)) {
+          procedure.profileId = activeId;
+          didMutate = true;
+        }
+      });
+
+      if (didMutate) {
+        saveState();
+      }
+    }
+
     return {
       buildDefaultState,
       normalizeState,
@@ -223,7 +320,15 @@
       saveState,
       getActiveProfile,
       medsForActiveProfile,
-      proceduresForActiveProfile
+      proceduresForActiveProfile,
+      parseTimes,
+      parseDosePlan,
+      normalizeDosePlan,
+      parseWeeklyDays,
+      isValidDateKey,
+      isValidPartialDate,
+      procedureSortKey,
+      recoverProfileMedicationVisibility
     };
   }
 

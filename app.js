@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260709-192542";
-const APP_RELEASE_LABEL = "PR7";
+const APP_BUILD = "20260709-201741";
+const APP_RELEASE_LABEL = "PR22";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -256,48 +256,12 @@ function toDateKey(date) {
   return date.toISOString().slice(0, 10);
 }
 
-function parseTimes(raw) {
-  return String(raw || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(item));
-}
-
 function parseDosePlan(raw) {
-  const plan = {};
-
-  String(raw || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .forEach((entry) => {
-      const [timeRaw, qtyRaw] = entry.split("=").map((item) => item.trim());
-      const quantity = Number(qtyRaw);
-      if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(timeRaw) || !Number.isFinite(quantity) || quantity <= 0) {
-        return;
-      }
-      plan[timeRaw] = quantity;
-    });
-
-  return plan;
+  return stateApi.parseDosePlan(raw);
 }
 
 function normalizeDosePlan(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-
-  return Object.entries(value).reduce((plan, [time, quantity]) => {
-    if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
-      return plan;
-    }
-    const normalizedQuantity = Number(quantity);
-    if (!Number.isFinite(normalizedQuantity) || normalizedQuantity <= 0) {
-      return plan;
-    }
-    plan[time] = normalizedQuantity;
-    return plan;
-  }, {});
+  return stateApi.normalizeDosePlan(value);
 }
 
 function hasDosePlan(med) {
@@ -364,34 +328,6 @@ function fixMedicationDosePlan(med) {
     console.log(`Fixed ${med.name}: dosePlan now =`, med.dosePlan);
   }
   return med;
-}
-
-function parseWeeklyDays(raw) {
-  return String(raw || "")
-    .split(",")
-    .map((item) => Number(item.trim()))
-    .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6);
-}
-
-function isValidDateKey(value) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function isValidPartialDate(value) {
-  return /^\d{4}(-\d{2}(-\d{2})?)?$/.test(value);
-}
-
-function procedureSortKey(value) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return value;
-  }
-  if (/^\d{4}-\d{2}$/.test(value)) {
-    return `${value}-00`;
-  }
-  if (/^\d{4}$/.test(value)) {
-    return `${value}-00-00`;
-  }
-  return "0000-00-00";
 }
 
 function includesDay(med, date) {
@@ -790,7 +726,7 @@ function checkSafetyForNewMed(newMed, excludeMedId = null) {
 }
 
 function validateProcedureInput(procedure) {
-  if (!isValidPartialDate(procedure.date)) {
+  if (!stateApi.isValidPartialDate(procedure.date)) {
     return "Please enter a valid date as YYYY, YYYY-MM, or YYYY-MM-DD.";
   }
   if (!procedure.procedureName) {
@@ -810,59 +746,15 @@ function resetProcedureEditMode() {
 }
 
 function renderProcedures() {
-  const procedures = proceduresForActiveProfile()
-    .slice()
-    .sort((a, b) => {
-      const keyA = procedureSortKey(a.date || "");
-      const keyB = procedureSortKey(b.date || "");
-      if (keyA !== keyB) {
-        return keyB.localeCompare(keyA);
-      }
-      return String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || ""));
-    });
-
-  dom.procedureList.innerHTML = "";
-  if (procedures.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "summary";
-    empty.textContent = "No procedures recorded for this user yet.";
-    dom.procedureList.appendChild(empty);
-    return;
-  }
-
-  procedures.forEach((procedure) => {
-    const node = dom.procedureTemplate.content.cloneNode(true);
-    const summaryParts = [procedure.date, procedure.procedureName, procedure.doctorName].filter(Boolean);
-    node.querySelector(".procedure-summary").textContent = summaryParts.join(" • ");
-
-    node.querySelector(".procedure-edit-btn").addEventListener("click", () => {
-      editingProcedureId = procedure.id;
-      dom.procedureForm.procedureDate.value = procedure.date || "";
-      dom.procedureForm.procedureName.value = procedure.procedureName || "";
-      dom.procedureForm.procedureDoctorName.value = procedure.doctorName || "";
-      dom.procedureForm.procedureNotes.value = procedure.notes || "";
-      if (dom.procedureSubmitBtn) {
-        dom.procedureSubmitBtn.textContent = "Save Changes";
-      }
-      if (dom.procedureCancelEditBtn) {
-        dom.procedureCancelEditBtn.classList.remove("hidden");
-      }
-      dom.procedureMessage.textContent = `Editing procedure: ${procedure.procedureName}.`;
-      dom.procedureForm.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-
-    node.querySelector(".procedure-delete-btn").addEventListener("click", () => {
-      const confirmed = window.confirm(`Delete procedure \"${procedure.procedureName}\" on ${procedure.date}?`);
-      if (!confirmed) {
-        return;
-      }
-      state.procedures = state.procedures.filter((entry) => entry.id !== procedure.id);
-      saveState();
-      dom.procedureMessage.textContent = "Procedure deleted.";
-      renderAll();
-    });
-
-    dom.procedureList.appendChild(node);
+  rendererApi.renderProcedures(proceduresForActiveProfile(), {
+    dom,
+    procedureSortKey: stateApi.procedureSortKey,
+    setEditingProcedureId: (id) => {
+      editingProcedureId = id;
+    },
+    state,
+    saveState,
+    renderAll
   });
 }
 
@@ -920,101 +812,24 @@ function resetMedicationEditMode() {
 }
 
 function renderTimeline(todayDoses, meds) {
-  dom.timeline.innerHTML = "";
-  if (meds.length === 0) {
-    dom.todaySummary.textContent = "No medications yet. Add one to enable reminders.";
-    return;
-  }
-
-  const medMap = new Map(meds.map((med) => [med.id, med]));
-
-  todayDoses.forEach((dose) => {
-    const med = medMap.get(dose.medId);
-    if (!med) {
-      return;
-    }
-    const node = dom.timelineTemplate.content.cloneNode(true);
-    node.querySelector(".time-title").textContent = `${dose.time} - ${getDoseQuantityForTime(med, dose.time)} ${doseUnit(med)}`;
-    node.querySelector(".time-meta").textContent = `${med.name} ${med.strength} | ${friendlyFoodRule(med.foodRule)}`;
-    node.querySelector(".time-datekey").textContent = `Scheduled date key: ${dose.dateKey}`;
-    const takeBtn = node.querySelector(".take-btn");
-    takeBtn.classList.toggle("pending", dose.status !== "taken");
-
-    let stateLine = statusText(dose.status);
-    if (dose.snoozedUntil) {
-      stateLine += ` (snoozed until ${new Date(dose.snoozedUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})`;
-    }
-    node.querySelector(".time-state").textContent = stateLine;
-
-    takeBtn.addEventListener("click", () => markDose(dose, "taken"));
-    node.querySelector(".untake-btn").addEventListener("click", () => untakeDose(dose));
-    node.querySelector(".skip-btn").addEventListener("click", () => markDose(dose, "skipped"));
-    node.querySelector(".snooze-btn").addEventListener("click", () => snoozeDose(dose));
-
-    dom.timeline.appendChild(node);
+  rendererApi.renderTimeline(todayDoses, meds, {
+    dom,
+    getDoseQuantityForTime,
+    doseUnit,
+    friendlyFoodRule,
+    statusText,
+    markDose,
+    untakeDose,
+    snoozeDose
   });
-
-  const taken = todayDoses.filter((dose) => dose.status === "taken").length;
-  dom.todaySummary.textContent = `Today: ${taken} of ${todayDoses.length} doses taken.`;
 }
 
 function renderAdherence(todayDoses) {
-  const now = new Date();
-  const weekKeys = [];
-  for (let i = 0; i < 7; i += 1) {
-    const date = new Date(now);
-    date.setDate(now.getDate() - i);
-    weekKeys.push(toDateKey(date));
-  }
-
-  const weekly = state.doses.filter((dose) => dose.profileId === state.activeProfileId && weekKeys.includes(dose.dateKey));
-  const expected = weekly.length || 1;
-  const taken = weekly.filter((dose) => dose.status === "taken").length;
-  const score = Math.round((taken / expected) * 100);
-
-  const missed = weekly.filter((dose) => dose.status === "skipped").length;
-  let streak = 0;
-  for (let i = 0; i < 30; i += 1) {
-    const date = new Date(now);
-    date.setDate(now.getDate() - i);
-    const key = toDateKey(date);
-    const day = state.doses.filter((dose) => dose.profileId === state.activeProfileId && dose.dateKey === key);
-    if (day.length === 0) {
-      continue;
-    }
-    const allTaken = day.every((dose) => dose.status === "taken");
-    if (allTaken) {
-      streak += 1;
-    } else {
-      break;
-    }
-  }
-
-  const overdue = overduePendingDoses();
-  const overdueDates = new Set(overdue.map((dose) => dose.dateKey));
-  const oldestOverdue = overdue.reduce((oldest, dose) => (dose.dateKey < oldest ? dose.dateKey : oldest), overdue[0]?.dateKey || "");
-
-  dom.adherenceSummary.textContent = `Weekly adherence: ${score}%. Missed doses: ${missed}. Streak: ${streak} day(s).`;
-  dom.trendList.innerHTML = "";
-
-  const lateCount = todayDoses.filter((dose) => {
-    if (dose.status !== "pending") {
-      return false;
-    }
-    const due = new Date(`${dose.dateKey}T${dose.time}:00`);
-    return Date.now() - due.getTime() > 60 * 60 * 1000;
-  }).length;
-
-  [
-    `Overdue pending doses: ${overdue.length}${overdue.length ? ` across ${overdueDates.size} day(s)` : ""}`,
-    overdue.length ? `Oldest overdue dose: ${oldestOverdue}` : "No overdue doses right now",
-    `Today pending after 1 hour: ${lateCount}`,
-    `Taken this week: ${taken}/${expected}`,
-    `Use print summary for clinic visits`
-  ].forEach((text) => {
-    const li = document.createElement("li");
-    li.textContent = text;
-    dom.trendList.appendChild(li);
+  rendererApi.renderAdherence(todayDoses, {
+    dom,
+    toDateKey,
+    state,
+    overduePendingDoses
   });
 }
 
@@ -1269,53 +1084,30 @@ function updateMedicalCard() {
 }
 
 function recoverProfileMedicationVisibility() {
-  const profileIds = new Set(state.profiles.map((profile) => profile.id));
-  const activeId = getActiveProfile().id;
-  let didMutate = false;
-
-  state.medications.forEach((med) => {
-    if (!med.profileId || !profileIds.has(med.profileId)) {
-      med.profileId = activeId;
-      didMutate = true;
-    }
+  stateApi.recoverProfileMedicationVisibility(state, {
+    getActiveProfile,
+    saveState
   });
-
-  state.procedures.forEach((procedure) => {
-    if (!procedure.profileId || !profileIds.has(procedure.profileId)) {
-      procedure.profileId = activeId;
-      didMutate = true;
-    }
-  });
-
-  if (didMutate) {
-    saveState();
-  }
 }
 
 function renderAll() {
-  recoverProfileMedicationVisibility();
-  document.body.classList.toggle("high-contrast", Boolean(state.settings.highContrast));
-
-  if (!ENABLE_POPUP_REMINDERS) {
-    hideAlarm();
-  }
-
-  const meds = medsForActiveProfile();
-
-  if (meds.length === 0) {
-    hideAlarm();
-  }
-
-  const todayDoses = createDueDosesForDate(new Date());
-  renderRunningOut(meds);
-  renderOrderPriority(meds);
-  renderMeds(meds);
-  renderProcedures();
-  renderTimeline(todayDoses, meds);
-  renderAdherence(todayDoses);
-  maybeNotifyRefill(meds);
-  syncProfileForm();
-  updateMedicalCard();
+  rendererApi.renderAll({
+    recoverProfileMedicationVisibility,
+    state,
+    enablePopupReminders: ENABLE_POPUP_REMINDERS,
+    hideAlarm,
+    medsForActiveProfile,
+    createDueDosesForDate,
+    renderRunningOut,
+    renderOrderPriority,
+    renderMeds,
+    renderProcedures,
+    renderTimeline,
+    renderAdherence,
+    maybeNotifyRefill,
+    syncProfileForm,
+    updateMedicalCard
+  });
 }
 
 async function fileToDataUrl(file) {
@@ -1390,7 +1182,7 @@ function exportProceduresCsv() {
   const rows = ["date,procedure_name,doctor_name,notes"];
   const procedures = proceduresForActiveProfile()
     .slice()
-    .sort((a, b) => procedureSortKey(b.date || "").localeCompare(procedureSortKey(a.date || "")));
+    .sort((a, b) => stateApi.procedureSortKey(b.date || "").localeCompare(stateApi.procedureSortKey(a.date || "")));
 
   procedures.forEach((procedure) => {
     const safeDate = JSON.stringify(String(procedure.date || ""));
@@ -1461,7 +1253,7 @@ function exportMedList() {
 
   const procedures = proceduresForActiveProfile()
     .slice()
-    .sort((a, b) => procedureSortKey(b.date || "").localeCompare(procedureSortKey(a.date || "")));
+    .sort((a, b) => stateApi.procedureSortKey(b.date || "").localeCompare(stateApi.procedureSortKey(a.date || "")));
   lines.push("");
   lines.push(`PROCEDURES (${procedures.length})`);
   lines.push("--".repeat(30));
@@ -1726,10 +1518,10 @@ function bindEvents() {
       editingMedicationId,
       fileToDataUrl,
       toDateKey,
-      isValidDateKey,
+      isValidDateKey: stateApi.isValidDateKey,
       parseDosePlan,
-      parseTimes,
-      parseWeeklyDays,
+      parseTimes: stateApi.parseTimes,
+      parseWeeklyDays: stateApi.parseWeeklyDays,
       makeId,
       checkSafetyForNewMed,
       saveState,
