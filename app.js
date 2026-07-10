@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260709-211626";
-const APP_RELEASE_LABEL = "Refactor";
+const APP_BUILD = "20260710-152104";
+const APP_RELEASE_LABEL = "Compulsory";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -995,7 +995,44 @@ function bindEvents() {
 
   dom.switchProfileBtn.addEventListener("click", switchUser);
 
+  function markValidationErrors(form) {
+    let valid = true;
+    const requiredSelector = "[required], [data-required='true']";
+    form.querySelectorAll(requiredSelector).forEach((el) => {
+      const val = String(el.value || "").trim();
+      const row = el.closest(".form-row") || el.parentElement;
+      let msg = row && row.querySelector && row.querySelector(".error-message");
+      if (!msg && row) {
+        msg = document.createElement("div");
+        msg.className = "error-message";
+        row.appendChild(msg);
+      }
+      if (!val) {
+        el.classList.add("field-error");
+        if (msg) { msg.textContent = "Required"; msg.classList.add("visible"); }
+        valid = false;
+      } else {
+        el.classList.remove("field-error");
+        if (msg) { msg.classList.remove("visible"); }
+      }
+      el.addEventListener("input", () => {
+        if (String(el.value || "").trim()) {
+          el.classList.remove("field-error");
+          if (msg) msg.classList.remove("visible");
+        }
+      }, { once: false });
+    });
+    return valid;
+  }
+
   dom.medForm.addEventListener("submit", async (event) => {
+    // Client-side highlight for required fields; stop submission if invalid.
+    const ok = markValidationErrors(dom.medForm);
+    if (!ok) {
+      event.preventDefault();
+      dom.safetyMessage.textContent = "Please fill required fields.";
+      return;
+    }
     await formsApi.handleMedicationSubmit(event, {
       dom,
       state,

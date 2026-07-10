@@ -400,6 +400,12 @@ button:disabled {
   gap: 0.35rem;
 }
 
+/* Required-field indicator and validation styles */
+.required::after { content: " *"; color: #c00; margin-left: 0.15rem; }
+.field-error { border-color: #c00 !important; box-shadow: 0 0 0 3px rgba(255,0,0,0.06); }
+.error-message { color: #c00; font-size: 0.9rem; margin-top: 0.25rem; display: none; }
+.error-message.visible { display: block; }
+
 .procedure-card .card-actions button {
   width: auto;
   min-width: 2.2rem;
