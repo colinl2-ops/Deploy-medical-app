@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260710-223036";
-const APP_RELEASE_LABEL = "Flag2";
+const APP_BUILD = "20260711-082753";
+const APP_RELEASE_LABEL = "Flag3";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -534,11 +534,33 @@ function renderMeds(meds) {
     serializeDosePlan,
     toDateKey,
     openMedicationFormCard,
+    refreshMedicationSubmitState: updateMedicationSubmitState,
     logPrnDose,
     state,
     saveState,
     renderAll
   });
+}
+
+function medicationRequiredFieldsComplete(form) {
+  if (!form) {
+    return false;
+  }
+  const requiredSelector = "[required], [data-required='true']";
+  const requiredFields = Array.from(form.querySelectorAll(requiredSelector));
+  if (requiredFields.length === 0) {
+    return true;
+  }
+  return requiredFields.every((field) => String(field.value || "").trim().length > 0);
+}
+
+function updateMedicationSubmitState() {
+  if (!dom.medSubmitBtn || !dom.medForm) {
+    return;
+  }
+  const disabled = !medicationRequiredFieldsComplete(dom.medForm);
+  dom.medSubmitBtn.disabled = disabled;
+  dom.medSubmitBtn.setAttribute("aria-disabled", String(disabled));
 }
 
 function resetMedicationEditMode() {
@@ -552,6 +574,7 @@ function resetMedicationEditMode() {
   if (dom.medForm?.startDate) {
     dom.medForm.startDate.value = toDateKey(new Date());
   }
+  updateMedicationSubmitState();
 }
 
 function renderTimeline(todayDoses, meds) {
@@ -1047,6 +1070,9 @@ function bindEvents() {
     return valid;
   }
 
+  dom.medForm.addEventListener("input", updateMedicationSubmitState);
+  dom.medForm.addEventListener("change", updateMedicationSubmitState);
+
   dom.medForm.addEventListener("submit", async (event) => {
     // Client-side highlight for required fields; stop submission if invalid.
     const ok = markValidationErrors(dom.medForm);
@@ -1071,12 +1097,14 @@ function bindEvents() {
       resetMedicationEditMode,
       renderAll
     });
+    updateMedicationSubmitState();
   });
 
   dom.medCancelEditBtn?.addEventListener("click", () => {
     dom.medForm.reset();
     resetMedicationEditMode();
     dom.safetyMessage.textContent = "Edit cancelled.";
+    updateMedicationSubmitState();
   });
 
   dom.procedureForm.addEventListener("submit", (event) => {
@@ -1236,6 +1264,8 @@ function bindEvents() {
     deferredPrompt = null;
     dom.installButton.classList.add("hidden");
   });
+
+  updateMedicationSubmitState();
 }
 
 function forceParamState() {
