@@ -143,6 +143,7 @@
         serializeDosePlan,
         toDateKey,
         openMedicationFormCard,
+        refreshMedicationSubmitState,
         logPrnDose,
         state,
         saveState,
@@ -200,6 +201,9 @@
           }
           if (dom.medCancelEditBtn) {
             dom.medCancelEditBtn.classList.remove("hidden");
+          }
+          if (typeof refreshMedicationSubmitState === "function") {
+            refreshMedicationSubmitState();
           }
           dom.safetyMessage.textContent = `Editing ${med.name}. Update fields and click Save Changes.`;
           const jumpTarget = openMedicationFormCard();
