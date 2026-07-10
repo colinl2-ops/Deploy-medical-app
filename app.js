@@ -83,6 +83,7 @@ if (dom.buildInfo) {
   dom.buildInfo.textContent = `Build: ${APP_BUILD} | ${APP_RELEASE_LABEL}`;
 }
 
+/** @type {ReturnType<typeof createStateApi>} */
 const stateApi = createStateApi({
   keys: {
     STORAGE_KEY,
