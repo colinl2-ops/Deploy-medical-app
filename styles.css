@@ -177,6 +177,28 @@ label {
   font-weight: 700;
 }
 
+.compulsory-field {
+  border: 2px solid #d39a2b;
+  background: linear-gradient(180deg, #fff9ec 0%, #fffef9 100%);
+  border-radius: 12px;
+  padding: 0.5rem;
+}
+
+.compulsory-chip {
+  display: inline-flex;
+  align-self: start;
+  width: fit-content;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #6a3f00;
+  background: #ffe8bc;
+  border: 1px solid #d39a2b;
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+}
+
 input,
 select,
 textarea,
@@ -192,6 +214,13 @@ textarea {
   border-radius: 12px;
   padding: 0.78rem;
   background: #fff;
+}
+
+.compulsory-field input:not(.field-error),
+.compulsory-field select:not(.field-error),
+.compulsory-field textarea:not(.field-error) {
+  border-color: #d39a2b;
+  background: #fffdf7;
 }
 
 input:focus,

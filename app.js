@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260710-152104";
-const APP_RELEASE_LABEL = "Compulsory";
+const APP_BUILD = "20260710-152448";
+const APP_RELEASE_LABEL = "Compulsory2";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -971,6 +971,27 @@ function openMedicationFormCard() {
 }
 
 function bindEvents() {
+  function decorateCompulsoryFields() {
+    const requiredSelector = "[required], [data-required='true']";
+    document.querySelectorAll("form").forEach((form) => {
+      form.querySelectorAll(requiredSelector).forEach((el) => {
+        const row = el.closest(".form-row") || el.parentElement;
+        if (!row) return;
+
+        row.classList.add("compulsory-field");
+
+        if (!row.querySelector(".compulsory-chip")) {
+          const chip = document.createElement("span");
+          chip.className = "compulsory-chip";
+          chip.textContent = "Compulsory";
+          row.insertBefore(chip, row.firstChild);
+        }
+      });
+    });
+  }
+
+  decorateCompulsoryFields();
+
   dom.profileForm.addEventListener("submit", (event) => {
     formsApi.handleProfileSubmit(event, {
       dom,
