@@ -164,6 +164,17 @@ h2 {
   min-height: 1.3rem;
 }
 
+.save-flag {
+  margin: 0.6rem 0 0;
+  min-height: 1.3rem;
+  color: var(--ok);
+  font-weight: 800;
+  padding: 0.45rem 0.7rem;
+  border: 2px solid #9fd4b8;
+  border-radius: 12px;
+  background: #eef9f1;
+}
+
 .grid-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

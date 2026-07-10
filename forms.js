@@ -1,5 +1,34 @@
 (function (global) {
   function createFormsApi() {
+    let medicationSavedTimeoutId = null;
+
+    function flashMedicationSaved(dom) {
+      if (!dom.medSavedFlag) {
+        return;
+      }
+
+      if (medicationSavedTimeoutId) {
+        clearTimeout(medicationSavedTimeoutId);
+        medicationSavedTimeoutId = null;
+      }
+
+      dom.medSavedFlag.textContent = "Medication Saved";
+      dom.medSavedFlag.classList.remove("hidden");
+      dom.medSavedFlag.classList.add("visible");
+
+      medicationSavedTimeoutId = window.setTimeout(() => {
+        if (!dom.medSavedFlag) {
+          medicationSavedTimeoutId = null;
+          return;
+        }
+
+        dom.medSavedFlag.textContent = "";
+        dom.medSavedFlag.classList.add("hidden");
+        dom.medSavedFlag.classList.remove("visible");
+        medicationSavedTimeoutId = null;
+      }, 2000);
+    }
+
     function handleProfileSubmit(event, context) {
       const { dom, getActiveProfile, saveState, renderAll } = context;
       event.preventDefault();
@@ -111,6 +140,7 @@
       saveState();
       dom.medForm.reset();
       resetMedicationEditMode();
+      flashMedicationSaved(dom);
       renderAll();
     }
 
