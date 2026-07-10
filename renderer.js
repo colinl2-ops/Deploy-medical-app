@@ -227,6 +227,10 @@
         }
 
         node.querySelector(".danger-btn").addEventListener("click", () => {
+          const confirmed = window.confirm(`Delete ${med.name}${med.strength ? " " + med.strength : ""}?\n\nThis will remove the medication and all its dose history. This cannot be undone.`);
+          if (!confirmed) {
+            return;
+          }
           state.medications = state.medications.filter((entry) => entry.id !== med.id);
           state.doses = state.doses.filter((entry) => entry.medId !== med.id);
           saveState();
