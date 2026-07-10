@@ -2,7 +2,7 @@
   function createFormsApi() {
     let medicationSavedTimeoutId = null;
 
-    function flashMedicationSaved(dom) {
+    function flashMedicationSaved(dom, message) {
       if (!dom.medSavedFlag) {
         return;
       }
@@ -12,9 +12,10 @@
         medicationSavedTimeoutId = null;
       }
 
-      dom.medSavedFlag.textContent = "Medication Saved";
+      dom.medSavedFlag.textContent = message || "Medication Saved";
       dom.medSavedFlag.classList.remove("hidden");
       dom.medSavedFlag.classList.add("visible");
+      dom.medSavedFlag.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
       medicationSavedTimeoutId = window.setTimeout(() => {
         if (!dom.medSavedFlag) {
@@ -140,7 +141,7 @@
       saveState();
       dom.medForm.reset();
       resetMedicationEditMode();
-      flashMedicationSaved(dom);
+      flashMedicationSaved(dom, existingMed ? "Changes Saved" : "Medication Saved");
       renderAll();
     }
 
