@@ -685,11 +685,14 @@
     }
 
     function buildMedicalCardText(profile, meds) {
+      const hasAsRequired = meds.some((med) => med.frequency === "asRequired");
       const medsLabel = meds
         .map((med) => `${med.frequency === "asRequired" ? "*" : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`)
         .join(", ") || "None";
 
-      return `${profile.name} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${medsLabel}`;
+      const asRequiredNote = hasAsRequired ? " [* as needed]" : "";
+
+      return `${profile.name} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${medsLabel}${asRequiredNote}`;
     }
 
     function caregiverStatusMessage(profileName, todayDoses) {
