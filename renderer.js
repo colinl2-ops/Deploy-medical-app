@@ -191,6 +191,7 @@
           dom.medForm.times.value = Array.isArray(med.times) ? med.times.join(", ") : "";
           dom.medForm.foodRule.value = med.foodRule || "none";
           dom.medForm.frequency.value = med.frequency || "daily";
+          dom.medForm.frequency.dispatchEvent(new Event("change", { bubbles: true }));
           dom.medForm.weeklyDays.value = Array.isArray(med.weeklyDays) ? med.weeklyDays.join(",") : "";
           dom.medForm.barcode.value = med.barcode || "";
           dom.medForm.notes.value = med.notes || "";

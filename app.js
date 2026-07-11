@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260711-221155";
-const APP_RELEASE_LABEL = "cghghgh";
+const APP_BUILD = "20260711-221832";
+const APP_RELEASE_LABEL = "Flag3";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -1018,6 +1018,49 @@ function bindEvents() {
   }
 
   decorateCompulsoryFields();
+
+  function syncTimesRequirement() {
+    const freqField = dom.medForm?.frequency;
+    const timesField = dom.medForm?.times;
+    if (!freqField || !timesField) {
+      return;
+    }
+
+    const isPrn = String(freqField.value || "").trim() === "asRequired";
+    const row = timesField.closest(".form-row") || timesField.parentElement;
+
+    if (isPrn) {
+      timesField.removeAttribute("required");
+      timesField.removeAttribute("data-required");
+      if (row) {
+        row.classList.remove("compulsory-field");
+        const chip = row.querySelector(".compulsory-chip");
+        if (chip) {
+          chip.remove();
+        }
+      }
+    } else {
+      timesField.setAttribute("required", "");
+      timesField.setAttribute("data-required", "true");
+      if (row) {
+        row.classList.add("compulsory-field");
+        if (!row.querySelector(".compulsory-chip")) {
+          const chip = document.createElement("span");
+          chip.className = "compulsory-chip";
+          chip.textContent = "Required";
+          row.insertBefore(chip, row.firstChild);
+        }
+      }
+    }
+
+    updateMedicationSubmitState();
+  }
+
+  dom.medForm?.frequency?.addEventListener("change", syncTimesRequirement);
+  dom.medForm?.addEventListener("reset", () => {
+    window.setTimeout(syncTimesRequirement, 0);
+  });
+  syncTimesRequirement();
 
   dom.profileForm.addEventListener("submit", (event) => {
     formsApi.handleProfileSubmit(event, {
