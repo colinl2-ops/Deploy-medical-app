@@ -89,10 +89,21 @@
       const isPrn = frequency === "asRequired";
       const pillsPerDose = Number(formData.get("pillsPerDose") || 1);
 
+      // Fix A: silently drop dose plan entries for times no longer scheduled
+      Object.keys(parsedDosePlan).forEach((time) => {
+        if (!parsedTimes.includes(time)) delete parsedDosePlan[time];
+      });
+
       if (!isPrn && parsedTimes.length > 0 && Object.keys(parsedDosePlan).length === 0) {
         parsedTimes.forEach((time) => {
           parsedDosePlan[time] = pillsPerDose;
         });
+      }
+
+      // Fix B: clear uniform dose plan so pillsPerDose drives dose calculation
+      const planValues = Object.values(parsedDosePlan);
+      if (planValues.length > 0 && planValues.every((v) => v === pillsPerDose)) {
+        parsedDosePlan = {};
       }
 
       const med = {
@@ -120,10 +131,6 @@
         dom.safetyMessage.textContent = isPrn
           ? "Please fill required fields."
           : "Please fill required fields and valid time format HH:MM.";
-        return;
-      }
-      if (Object.keys(med.dosePlan).some((time) => !med.times.includes(time))) {
-        dom.safetyMessage.textContent = "Each dose plan time must also exist in the times field.";
         return;
       }
       if (isPrn) {

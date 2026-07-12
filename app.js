@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260712-110703";
-const APP_RELEASE_LABEL = "Flag4";
+const APP_BUILD = "20260712-112954";
+const APP_RELEASE_LABEL = "Flag5";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -251,6 +251,10 @@ function toDateKey(date) {
 
 function parseDosePlan(raw) {
   return stateApi.parseDosePlan(raw);
+}
+
+function parseTimes(raw) {
+  return stateApi.parseTimes(raw);
 }
 
 function normalizeDosePlan(value) {
@@ -1061,7 +1065,49 @@ function bindEvents() {
     updateMedicationSubmitState();
   }
 
+  function syncDosePlanToTimes() {
+    const form = dom.medForm;
+    if (!form || !form.dosePlan) {
+      return;
+    }
+    const currentTimes = parseTimes(form.times?.value || "");
+    const currentPlan = parseDosePlan(form.dosePlan.value || "");
+    if (Object.keys(currentPlan).length === 0) {
+      return;
+    }
+    Object.keys(currentPlan).forEach((t) => {
+      if (!currentTimes.includes(t)) delete currentPlan[t];
+    });
+    const ppd = Number(form.pillsPerDose?.value || 1);
+    const remaining = Object.values(currentPlan);
+    if (remaining.length === 0 || remaining.every((v) => v === ppd)) {
+      form.dosePlan.value = "";
+    } else {
+      form.dosePlan.value = Object.entries(currentPlan)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([t, q]) => `${t}=${q}`)
+        .join(", ");
+    }
+  }
+
+  function syncDosePlanToPillsPerDose() {
+    const form = dom.medForm;
+    if (!form || !form.dosePlan) {
+      return;
+    }
+    const currentPlan = parseDosePlan(form.dosePlan.value || "");
+    const values = Object.values(currentPlan);
+    if (values.length === 0) {
+      return;
+    }
+    if (values.every((v) => v === values[0])) {
+      form.dosePlan.value = "";
+    }
+  }
+
   dom.medForm?.frequency?.addEventListener("change", syncTimesRequirement);
+  dom.medForm?.times?.addEventListener("blur", syncDosePlanToTimes);
+  dom.medForm?.pillsPerDose?.addEventListener("change", syncDosePlanToPillsPerDose);
   dom.medForm?.addEventListener("reset", () => {
     window.setTimeout(syncTimesRequirement, 0);
   });
