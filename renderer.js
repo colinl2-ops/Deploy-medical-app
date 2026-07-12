@@ -135,6 +135,7 @@
         formatDosePlan,
         friendlyFoodRule,
         friendlyFrequency,
+        friendlyWeeklyDays,
         repeatsCount,
         doseUnit,
         refillFlag,
@@ -168,7 +169,10 @@
 
         node.querySelector(".med-dose-plan").textContent = `Dose plan: ${formatDosePlan(med)}`;
 
-        node.querySelector(".med-schedule").textContent = `${friendlyFoodRule(med.foodRule)} | ${friendlyFrequency(med.frequency)} | Repeats: ${repeatsCount(med)}`;
+        const freqLabel = med.frequency === "weekly" && Array.isArray(med.weeklyDays) && med.weeklyDays.length > 0
+          ? `Weekly — ${friendlyWeeklyDays(med.weeklyDays)}`
+          : friendlyFrequency(med.frequency);
+        node.querySelector(".med-schedule").textContent = `${friendlyFoodRule(med.foodRule)} | ${freqLabel} | Repeats: ${repeatsCount(med)}`;
 
         const dl = daysLeft(med);
         const daysText = Number.isFinite(dl) ? `${dl.toFixed(1)} day(s) left` : `Stock: ${med.stock} ${doseUnit(med)}`;

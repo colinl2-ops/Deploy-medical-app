@@ -5,7 +5,7 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260711-224422";
+const APP_BUILD = "20260712-110305";
 const APP_RELEASE_LABEL = "Flag3";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
@@ -437,6 +437,10 @@ function friendlyFrequency(freq) {
   return stateApi.friendlyFrequency(freq);
 }
 
+function friendlyWeeklyDays(days) {
+  return stateApi.friendlyWeeklyDays(days);
+}
+
 function medDisplayLine(med) {
   return stateApi.medDisplayLine(med);
 }
@@ -515,6 +519,7 @@ function renderMeds(meds) {
     formatDosePlan,
     friendlyFoodRule,
     friendlyFrequency,
+    friendlyWeeklyDays,
     repeatsCount,
     doseUnit,
     refillFlag,
