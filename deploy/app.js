@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260711-082753";
-const APP_RELEASE_LABEL = "Flag3";
+const APP_BUILD = "20260712-110703";
+const APP_RELEASE_LABEL = "Flag4";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -120,18 +120,9 @@ let editingProcedureId = null;
 let closeAllChannel = null;
 let closeAllClickBound = false;
 
-function attemptWindowClose() {
-  // Browsers may only allow close for script-opened windows; this is best effort.
-  try {
-    window.open("", "_self");
-  } catch {
-    // Ignore and continue to close attempt.
-  }
-  window.close();
-  if (!window.closed) {
-    document.body.innerHTML = "<main style='padding:2rem;font-family:Georgia,serif'><h1>Window closed</h1><p>You can now close this tab.</p></main>";
-  }
-}
+// Removed non-functional attempt to programmatically close browser windows.
+// Modern browsers only allow `window.close()` for script-opened windows,
+// so close-all signals now trigger a UI-only collapse of sections instead.
 
 function requestCloseAllWindows() {
   const cards = Array.from(document.querySelectorAll("main section.card"));
@@ -183,14 +174,14 @@ function setupCloseAllListeners() {
     closeAllChannel = new BroadcastChannel(CLOSE_ALL_CHANNEL);
     closeAllChannel.onmessage = (event) => {
       if (event?.data?.type === "close-all") {
-        attemptWindowClose();
+        requestCloseAllWindows();
       }
     };
   }
 
   window.addEventListener("storage", (event) => {
     if (event.key === CLOSE_ALL_SIGNAL_KEY && event.newValue) {
-      attemptWindowClose();
+      requestCloseAllWindows();
     }
   });
 }
@@ -446,6 +437,10 @@ function friendlyFrequency(freq) {
   return stateApi.friendlyFrequency(freq);
 }
 
+function friendlyWeeklyDays(days) {
+  return stateApi.friendlyWeeklyDays(days);
+}
+
 function medDisplayLine(med) {
   return stateApi.medDisplayLine(med);
 }
@@ -524,6 +519,7 @@ function renderMeds(meds) {
     formatDosePlan,
     friendlyFoodRule,
     friendlyFrequency,
+    friendlyWeeklyDays,
     repeatsCount,
     doseUnit,
     refillFlag,
@@ -547,10 +543,22 @@ function medicationRequiredFieldsComplete(form) {
     return false;
   }
   const requiredSelector = "[required], [data-required='true']";
-  const requiredFields = Array.from(form.querySelectorAll(requiredSelector));
+  let requiredFields = Array.from(form.querySelectorAll(requiredSelector));
+
+  // If frequency is "asRequired" then the times field is not required.
+  try {
+    const frequency = String((form.frequency && form.frequency.value) || "").trim();
+    if (frequency === "asRequired") {
+      requiredFields = requiredFields.filter((field) => !(field.name === "times"));
+    }
+  } catch (e) {
+    // ignore and proceed with original required fields
+  }
+
   if (requiredFields.length === 0) {
     return true;
   }
+
   return requiredFields.every((field) => String(field.value || "").trim().length > 0);
 }
 
@@ -1015,6 +1023,49 @@ function bindEvents() {
   }
 
   decorateCompulsoryFields();
+
+  function syncTimesRequirement() {
+    const freqField = dom.medForm?.frequency;
+    const timesField = dom.medForm?.times;
+    if (!freqField || !timesField) {
+      return;
+    }
+
+    const isPrn = String(freqField.value || "").trim() === "asRequired";
+    const row = timesField.closest(".form-row") || timesField.parentElement;
+
+    if (isPrn) {
+      timesField.removeAttribute("required");
+      timesField.removeAttribute("data-required");
+      if (row) {
+        row.classList.remove("compulsory-field");
+        const chip = row.querySelector(".compulsory-chip");
+        if (chip) {
+          chip.remove();
+        }
+      }
+    } else {
+      timesField.setAttribute("required", "");
+      timesField.setAttribute("data-required", "true");
+      if (row) {
+        row.classList.add("compulsory-field");
+        if (!row.querySelector(".compulsory-chip")) {
+          const chip = document.createElement("span");
+          chip.className = "compulsory-chip";
+          chip.textContent = "Required";
+          row.insertBefore(chip, row.firstChild);
+        }
+      }
+    }
+
+    updateMedicationSubmitState();
+  }
+
+  dom.medForm?.frequency?.addEventListener("change", syncTimesRequirement);
+  dom.medForm?.addEventListener("reset", () => {
+    window.setTimeout(syncTimesRequirement, 0);
+  });
+  syncTimesRequirement();
 
   dom.profileForm.addEventListener("submit", (event) => {
     formsApi.handleProfileSubmit(event, {

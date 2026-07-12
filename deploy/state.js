@@ -333,6 +333,19 @@
       return "Daily";
     }
 
+    function friendlyWeeklyDays(days) {
+      const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      if (!Array.isArray(days) || days.length === 0) {
+        return "";
+      }
+      return days
+        .slice()
+        .sort((a, b) => a - b)
+        .map((d) => names[d] || "")
+        .filter(Boolean)
+        .join(", ");
+    }
+
     function formatDosePlan(med) {
       if (med.frequency === "asRequired") {
         return `${Number(med.pillsPerDose || 1)} ${doseUnit(med)}`;
@@ -662,13 +675,24 @@
         return "";
       }
 
-      const dailyDose = pillsNeededPerDay(med);
-      if (!Number.isFinite(dailyDose) || dailyDose <= 0) {
+      const times = Array.isArray(med.times) ? med.times : [];
+      const fallback = Number(med.pillsPerDose) || 1;
+      const scheduledTotal = times.reduce((sum, time) => sum + getDoseQuantityForTime(med, time), 0);
+      const base = scheduledTotal > 0 ? scheduledTotal : fallback;
+      if (base <= 0) {
         return "";
       }
 
-      const formatted = Number.isInteger(dailyDose) ? String(dailyDose) : String(Number(dailyDose.toFixed(2)));
-      return ` (${formatted})`;
+      const qty = Number.isInteger(base) ? String(base) : String(Number(base.toFixed(2)));
+
+      if (med.frequency === "everyOtherDay") {
+        return ` (${qty} every 2d)`;
+      }
+      if (med.frequency === "weekly") {
+        const days = friendlyWeeklyDays(med.weeklyDays);
+        return days ? ` (${qty} ${days})` : ` (${qty} weekly)`;
+      }
+      return ` (${qty}/day)`;
     }
 
     function buildRefillAlertMessages(meds, thresholds = [7, 3, 1]) {
@@ -685,11 +709,14 @@
     }
 
     function buildMedicalCardText(profile, meds) {
+      const hasAsRequired = meds.some((med) => med.frequency === "asRequired");
       const medsLabel = meds
         .map((med) => `${med.frequency === "asRequired" ? "*" : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`)
         .join(", ") || "None";
 
-      return `${profile.name} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${medsLabel}`;
+      const asRequiredNote = hasAsRequired ? " [* as needed]" : "";
+
+      return `${profile.name} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${medsLabel}${asRequiredNote}`;
     }
 
     function caregiverStatusMessage(profileName, todayDoses) {
@@ -723,7 +750,7 @@
         .map((item) => item.med);
 
       const FOOD_LABELS = { none: "No special requirement", before: "Take before food", with: "Take with food", after: "Take after food" };
-      const FREQ_LABELS = { daily: "Every day", alternate: "Every other day", weekly: "Selected days only" };
+      const FREQ_LABELS = { daily: "Every day", twiceDaily: "Twice daily", everyOtherDay: "Every other day", asRequired: "As required" };
 
       const lines = [];
       lines.push("MEDICATION LIST");
@@ -747,7 +774,10 @@
           lines.push(`${i + 1}. ${med.name}${med.strength ? "  " + med.strength : ""}`);
           if (med.purpose) lines.push(`   Purpose  : ${med.purpose}`);
           const times = Array.isArray(med.times) && med.times.length > 0 ? med.times.join(", ") : "Not set";
-          lines.push(`   Schedule : ${FREQ_LABELS[med.frequency] || med.frequency || "Daily"}  -  ${times}`);
+          const freqExport = med.frequency === "weekly"
+            ? `Weekly — ${friendlyWeeklyDays(med.weeklyDays) || "day not specified"}`
+            : (FREQ_LABELS[med.frequency] || "Daily");
+          lines.push(`   Schedule : ${freqExport}  -  ${times}`);
           lines.push(`   Dose plan: ${formatDosePlan(med)}`);
           lines.push(`   Repeats  : ${repeatsCount(med)}`);
           lines.push(`   Food     : ${FOOD_LABELS[med.foodRule] || med.foodRule || "No special requirement"}`);
@@ -1126,6 +1156,7 @@
       friendlyFoodRule,
       friendlyForm,
       friendlyFrequency,
+      friendlyWeeklyDays,
       formatDosePlan,
       medDisplayLine,
       statusText,
