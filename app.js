@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260714-060627";
-const APP_RELEASE_LABEL = "Flag9";
+const APP_BUILD = "20260714-061406";
+const APP_RELEASE_LABEL = "Flag10";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -1023,6 +1023,23 @@ function setupCollapsibleCards() {
   uiApi.setupCollapsibleCards();
 }
 
+// Ensure collapse toggles work even if per-button listeners are lost
+let cardToggleDelegationBound = false;
+function bindCardToggleDelegation() {
+  if (cardToggleDelegationBound) return;
+  cardToggleDelegationBound = true;
+  document.addEventListener('click', (ev) => {
+    const tgt = ev.target;
+    if (!(tgt instanceof Element)) return;
+    const toggle = tgt.closest('.card-toggle');
+    if (!toggle) return;
+    const card = toggle.closest('section.card');
+    if (!card) return;
+    const collapsed = card.classList.toggle('is-collapsed');
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+  });
+}
+
 function openMedicationFormCard() {
   const target = document.getElementById("medFormTarget");
   const card = target?.nextElementSibling?.classList?.contains("card") ? target.nextElementSibling : dom.medForm?.closest("section.card");
@@ -1620,6 +1637,7 @@ applyForceRefreshFlow().then((reloading) => {
   setupCloseAllListeners();
   bindCloseAllButton();
   setupCollapsibleCards();
+  bindCardToggleDelegation();
   bindEvents();
   resetProcedureEditMode();
   renderAll();
