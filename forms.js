@@ -70,9 +70,23 @@
       } = context;
 
       event.preventDefault();
+        // Disable submit and show spinner while processing
+        try {
+          if (dom.medSubmitBtn) dom.medSubmitBtn.disabled = true;
+          const spinner = document.getElementById('medSaveSpinner');
+          if (spinner) spinner.classList.remove('hidden');
+        } catch (e) {}
       const formData = new FormData(dom.medForm);
       const photoFile = formData.get("photo");
-      const photoDataUrl = photoFile instanceof File ? await fileToDataUrl(photoFile) : "";
+      const removePhotoFlag = formData.get("removePhoto");
+      let photoDataUrl = "";
+      if (removePhotoFlag) {
+        photoDataUrl = ""; // explicit removal requested
+      } else if (photoFile instanceof File) {
+        photoDataUrl = await fileToDataUrl(photoFile);
+      } else {
+        photoDataUrl = "";
+      }
 
       const existingMed = editingMedicationId ? state.medications.find((entry) => entry.id === editingMedicationId) : null;
       const startDateRaw = String(formData.get("startDate") || "").trim();
@@ -124,7 +138,7 @@
         barcode: String(formData.get("barcode") || "").trim(),
         notes: String(formData.get("notes") || "").trim(),
         startDate: resolvedStartDate,
-        photoDataUrl: photoDataUrl || existingMed?.photoDataUrl || ""
+        photoDataUrl: (removePhotoFlag ? "" : (photoDataUrl || existingMed?.photoDataUrl || ""))
       };
 
       if (!med.name || !med.strength || !med.purpose || (!isPrn && med.times.length === 0)) {
@@ -141,15 +155,32 @@
       const safetyWarning = checkSafetyForNewMed(med, existingMed?.id || null);
       dom.safetyMessage.textContent = safetyWarning;
       if (existingMed) {
+        // capture previous photo for undo if removed
+        const prevPhoto = existingMed.photoDataUrl || "";
         state.medications = state.medications.map((entry) => (entry.id === existingMed.id ? med : entry));
+        if (removePhotoFlag && prevPhoto) {
+          try { window.__photoUndo?.showUndoForRemoval(existingMed.id, prevPhoto); } catch (e) {}
+        }
       } else {
         state.medications.push(med);
       }
       saveState();
       dom.medForm.reset();
+      try {
+        const input = dom.medForm.querySelector('#photoInput');
+        if (input) input.value = "";
+        const preview = document.getElementById('photoPreview');
+        if (preview) preview.src = med.photoDataUrl || 'icons/icon-192.svg';
+      } catch (e) {}
       resetMedicationEditMode();
       flashMedicationSaved(dom, existingMed ? "Changes Saved" : "Medication Saved");
       renderAll();
+        } finally {
+          if (dom.medSubmitBtn) dom.medSubmitBtn.disabled = false;
+          const spinner = document.getElementById('medSaveSpinner');
+          if (spinner) spinner.classList.add('hidden');
+          try { window.__checkStorageWarning?.(); } catch (e) {}
+        }
     }
 
     function handleProcedureSubmit(event, context) {

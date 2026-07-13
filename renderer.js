@@ -201,6 +201,14 @@
           dom.medForm.notes.value = med.notes || "";
           dom.medForm.form.value = med.form || "tablet";
 
+          // Set photo preview and remove flag
+          try {
+            const preview = document.getElementById('photoPreview');
+            if (preview) preview.src = med.photoDataUrl || 'icons/icon-192.svg';
+            const removeCb = dom.medForm.querySelector('#removePhoto');
+            if (removeCb) removeCb.checked = false;
+          } catch (e) {}
+
           if (dom.medSubmitBtn) {
             dom.medSubmitBtn.textContent = "Save Changes";
           }

@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260713-173013";
-const APP_RELEASE_LABEL = "Flag7";
+const APP_BUILD = "20260714-054736";
+const APP_RELEASE_LABEL = "Flag8";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -861,9 +861,38 @@ async function fileToDataUrl(file) {
       resolve("");
       return;
     }
+    // If the file is small, read directly. Otherwise, resize via canvas to limit size.
+    const MAX_DIM = 1200;
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
     reader.onerror = () => resolve("");
+    reader.onload = () => {
+      try {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width <= MAX_DIM && height <= MAX_DIM) {
+            resolve(String(reader.result || ""));
+            return;
+          }
+          const ratio = Math.min(1, MAX_DIM / Math.max(width, height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(width * ratio);
+          canvas.height = Math.round(height * ratio);
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          try {
+            const compressed = canvas.toDataURL('image/jpeg', 0.8);
+            resolve(compressed);
+          } catch (e) {
+            resolve(String(reader.result || ""));
+          }
+        };
+        img.onerror = () => resolve(String(reader.result || ""));
+        img.src = String(reader.result || "");
+      } catch (e) {
+        resolve(String(reader.result || ""));
+      }
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -1196,6 +1225,139 @@ function bindEvents() {
     });
     updateMedicationSubmitState();
   });
+
+  // Update photo preview when user selects a file and clear remove flag
+  const photoInput = dom.medForm.querySelector('#photoInput');
+  if (photoInput) {
+    photoInput.addEventListener('change', async (ev) => {
+      try {
+        const file = photoInput.files && photoInput.files[0];
+        const preview = document.getElementById('photoPreview');
+        if (file) {
+          const data = await fileToDataUrl(file);
+          if (preview) preview.src = data || 'icons/icon-192.svg';
+          const removeCb = dom.medForm.querySelector('#removePhoto');
+          if (removeCb) removeCb.checked = false;
+        } else if (preview) {
+          preview.src = 'icons/icon-192.svg';
+        }
+      } catch (e) {}
+    });
+  }
+
+  // Photo preview dialog handlers
+  const photoDialog = byId('photoPreviewDialog');
+  const photoDialogImage = byId('photoDialogImage');
+  const photoReplaceBtn = byId('photoReplaceBtn');
+  const photoRemoveBtn = byId('photoRemoveBtn');
+  const photoCloseBtn = byId('photoCloseBtn');
+
+  // Open dialog when clicking preview images
+  document.addEventListener('click', (ev) => {
+    const tgt = ev.target;
+    if (!(tgt instanceof Element)) return;
+    if (tgt.id === 'photoPreview' || tgt.classList.contains('med-photo')) {
+      const src = tgt.getAttribute('src') || 'icons/icon-192.svg';
+      if (photoDialogImage) photoDialogImage.src = src;
+      if (photoDialog && typeof photoDialog.showModal === 'function') photoDialog.showModal();
+    }
+  });
+
+  if (photoReplaceBtn) {
+    photoReplaceBtn.addEventListener('click', () => {
+      const input = dom.medForm.querySelector('#photoInput');
+      if (input) input.click();
+      if (photoDialog && typeof photoDialog.close === 'function') photoDialog.close();
+    });
+  }
+  if (photoRemoveBtn) {
+    photoRemoveBtn.addEventListener('click', () => {
+      const removeCb = dom.medForm.querySelector('#removePhoto');
+      if (removeCb) removeCb.checked = true;
+      const preview = byId('photoPreview');
+      if (preview) preview.src = 'icons/icon-192.svg';
+      if (photoDialog && typeof photoDialog.close === 'function') photoDialog.close();
+    });
+  }
+  if (photoCloseBtn) {
+    photoCloseBtn.addEventListener('click', () => { if (photoDialog && typeof photoDialog.close === 'function') photoDialog.close(); });
+  }
+
+  // Undo toast for photo removal
+  const undoToast = byId('undoToast');
+  const undoToastBtn = byId('undoToastBtn');
+  const undoToastMessage = byId('undoToastMessage');
+  let undoTimeoutId = null;
+  const photoUndoStore = new Map();
+  if (undoToastBtn) {
+    undoToastBtn.addEventListener('click', () => {
+      // restore last removed photo if available
+      const lastKey = Array.from(photoUndoStore.keys()).pop();
+      if (!lastKey) return;
+      const data = photoUndoStore.get(lastKey);
+      if (!data) return;
+      const med = state.medications.find((m) => m.id === lastKey);
+      if (med) {
+        med.photoDataUrl = data;
+        saveState();
+        renderAll();
+      }
+      photoUndoStore.delete(lastKey);
+      if (undoToast) undoToast.classList.add('hidden');
+      if (undoTimeoutId) { clearTimeout(undoTimeoutId); undoTimeoutId = null; }
+    });
+  }
+
+  // Helper to show undo toast when a photo is removed
+  function showUndoForRemoval(medId, previousData) {
+    if (!medId) return;
+    photoUndoStore.set(medId, previousData || "");
+    if (undoToastMessage) undoToastMessage.textContent = 'Photo removed';
+    if (undoToast) undoToast.classList.remove('hidden');
+    if (undoTimeoutId) clearTimeout(undoTimeoutId);
+    undoTimeoutId = setTimeout(() => {
+      photoUndoStore.delete(medId);
+      if (undoToast) undoToast.classList.add('hidden');
+      undoTimeoutId = null;
+    }, 5000);
+  }
+
+  // Expose for other modules to call when they remove a photo
+  window.__photoUndo = { showUndoForRemoval };
+
+  // Storage usage check: warn when approaching localStorage quota
+  function estimateLocalStorageBytes() {
+    try {
+      let total = 0;
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        const val = localStorage.getItem(key) || "";
+        total += key.length + val.length;
+      }
+      return total;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function checkStorageWarning() {
+    const bytes = estimateLocalStorageBytes();
+    // warn at ~4.5MB (approx 4.5 * 1024 * 1024)
+    const threshold = 4.5 * 1024 * 1024;
+    const warnEl = byId('storageWarning');
+    if (bytes > threshold) {
+      if (warnEl) {
+        warnEl.textContent = 'Storage usage is high — photos may fail to save. Consider removing large images.';
+        warnEl.classList.remove('hidden');
+      }
+    } else if (warnEl) {
+      warnEl.classList.add('hidden');
+    }
+  }
+
+  // run on startup and when saving
+  try { checkStorageWarning(); } catch (e) {}
+  window.__checkStorageWarning = checkStorageWarning;
 
   dom.medCancelEditBtn?.addEventListener("click", () => {
     dom.medForm.reset();

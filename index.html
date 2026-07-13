@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
-    <link rel="stylesheet" href="styles.css?v=20260713-173013" />
+    <link rel="stylesheet" href="styles.css?v=20260714-054736" />
     <title>Medication Helper</title>
   </head>
   <body>
@@ -180,8 +180,14 @@
           </label>
           <label>
             Photo of pill/bottle
-            <input id="photoInput" name="photo" type="file" accept="image/*" />
+            <input id="photoInput" name="photo" type="file" accept="image/*" aria-label="Choose medication photo" />
           </label>
+          <label>
+            <input id="removePhoto" name="removePhoto" type="checkbox" aria-label="Remove existing photo" /> Remove existing photo
+          </label>
+          <div class="photo-preview">
+            <img id="photoPreview" alt="Photo preview" src="icons/icon-192.svg" role="button" aria-label="Open full photo preview" tabindex="0" />
+          </div>
           <label class="full">
             Notes
             <textarea name="notes" rows="2" placeholder="Keep away from sunlight"></textarea>
@@ -189,6 +195,7 @@
           <div class="button-row full">
             <button id="medSubmitBtn" class="primary-btn" type="submit">Save Medication</button>
             <button id="medCancelEditBtn" class="secondary-btn hidden" type="button">Cancel Edit</button>
+            <span id="medSaveSpinner" class="spinner hidden" aria-hidden="true">Saving…</span>
           </div>
         </form>
         <p id="medSavedFlag" class="save-flag hidden" aria-live="polite"></p>
@@ -280,6 +287,11 @@
       </section>
     </main>
 
+    <div id="undoToast" class="undo-toast hidden" role="status" aria-live="polite">
+      <span id="undoToastMessage">Photo removed</span>
+      <button id="undoToastBtn" class="secondary-btn" type="button" aria-label="Undo photo removal">Undo</button>
+    </div>
+
     <dialog id="emergencyDialog">
       <h2>Emergency Card</h2>
       <p id="medicalCardText"></p>
@@ -288,6 +300,17 @@
         <button id="closeEmergencyBtn" class="secondary-btn" type="button">Close</button>
       </div>
     </dialog>
+
+    <dialog id="photoPreviewDialog" class="photo-dialog" aria-label="Photo preview dialog">
+      <img id="photoDialogImage" alt="Full photo" src="icons/icon-192.svg" />
+      <div class="button-row">
+        <button id="photoReplaceBtn" class="primary-btn" type="button" aria-label="Replace photo">Replace</button>
+        <button id="photoRemoveBtn" class="danger-btn" type="button" aria-label="Remove photo">Remove</button>
+        <button id="photoCloseBtn" class="secondary-btn" type="button" aria-label="Close photo preview">Close</button>
+      </div>
+    </dialog>
+
+    <div id="storageWarning" class="warn-text hidden" role="alert" aria-live="polite"></div>
 
     <section id="alarmOverlay" class="alarm-overlay hidden" aria-live="assertive" aria-hidden="true" style="display: none !important;">
       <div class="alarm-panel">
@@ -361,6 +384,6 @@
     <script src="ui.js?v=20260707-101947" defer></script>
     <script src="forms.js?v=20260709-175350" defer></script>
     <script src="renderer.js?v=20260709-190739" defer></script>
-    <script src="app.js?v=20260713-173013" defer></script>
+    <script src="app.js?v=20260714-054736" defer></script>
   </body>
 </html>
