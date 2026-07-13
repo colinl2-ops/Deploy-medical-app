@@ -70,12 +70,13 @@
       } = context;
 
       event.preventDefault();
-        // Disable submit and show spinner while processing
-        try {
-          if (dom.medSubmitBtn) dom.medSubmitBtn.disabled = true;
-          const spinner = document.getElementById('medSaveSpinner');
-          if (spinner) spinner.classList.remove('hidden');
-        } catch (e) {}
+      // Disable submit and show spinner while processing
+      if (dom.medSubmitBtn) dom.medSubmitBtn.disabled = true;
+      try {
+        const spinner = document.getElementById('medSaveSpinner');
+        if (spinner) spinner.classList.remove('hidden');
+      } catch (e) {}
+      try {
       const formData = new FormData(dom.medForm);
       const photoFile = formData.get("photo");
       const removePhotoFlag = formData.get("removePhoto");
@@ -175,12 +176,14 @@
       resetMedicationEditMode();
       flashMedicationSaved(dom, existingMed ? "Changes Saved" : "Medication Saved");
       renderAll();
-        } finally {
-          if (dom.medSubmitBtn) dom.medSubmitBtn.disabled = false;
+      } finally {
+        if (dom.medSubmitBtn) dom.medSubmitBtn.disabled = false;
+        try {
           const spinner = document.getElementById('medSaveSpinner');
           if (spinner) spinner.classList.add('hidden');
-          try { window.__checkStorageWarning?.(); } catch (e) {}
-        }
+          window.__checkStorageWarning?.();
+        } catch (e) {}
+      }
     }
 
     function handleProcedureSubmit(event, context) {
