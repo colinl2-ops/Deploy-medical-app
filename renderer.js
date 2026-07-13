@@ -158,7 +158,9 @@
 
       sortedMeds.forEach((med) => {
         const node = dom.medTemplate.content.cloneNode(true);
-        node.querySelector(".med-photo").src = med.photoDataUrl || "icons/icon-192.svg";
+        const photoImg = node.querySelector(".med-photo");
+        photoImg.src = med.photoDataUrl || "icons/icon-192.svg";
+        photoImg.dataset.medId = med.id;
         node.querySelector(".med-name").textContent = `${med.name} ${med.strength}`;
         node.querySelector(".med-purpose").textContent = `For: ${med.purpose}`;
 

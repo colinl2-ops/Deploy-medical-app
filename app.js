@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260714-074225";
-const APP_RELEASE_LABEL = "Flag15";
+const APP_BUILD = "20260714-075112";
+const APP_RELEASE_LABEL = "Flag16";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -1283,6 +1283,9 @@ function bindEvents() {
   const photoRemoveBtn = byId('photoRemoveBtn');
   const photoCloseBtn = byId('photoCloseBtn');
 
+  // Track which med the dialog was opened for (null = form preview, string = med card)
+  let photoDialogMedId = null;
+
   // Open dialog when clicking preview images
   document.addEventListener('click', (ev) => {
     const tgt = ev.target;
@@ -1290,28 +1293,67 @@ function bindEvents() {
     if (tgt.id === 'photoPreview' || tgt.classList.contains('med-photo')) {
       const src = tgt.getAttribute('src') || 'icons/icon-192.svg';
       if (photoDialogImage) photoDialogImage.src = src;
+      photoDialogMedId = tgt.dataset.medId || null;
       if (photoDialog && typeof photoDialog.showModal === 'function') photoDialog.showModal();
     }
   });
 
   if (photoReplaceBtn) {
     photoReplaceBtn.addEventListener('click', () => {
-      const input = dom.medForm.querySelector('#photoInput');
-      if (input) input.click();
       if (photoDialog && typeof photoDialog.close === 'function') photoDialog.close();
+      if (photoDialogMedId) {
+        // Clicked from a med card — enter edit mode for that med, then open file picker
+        const editBtn = document.querySelector(`.med-photo[data-med-id="${photoDialogMedId}"]`)
+          ?.closest('.med-card')
+          ?.querySelector('.edit-btn');
+        if (editBtn) {
+          editBtn.click();
+          // Wait for the form to scroll into view, then open file picker
+          setTimeout(() => {
+            const input = dom.medForm.querySelector('#photoInput');
+            if (input) input.click();
+          }, 350);
+        }
+      } else {
+        // Clicked from the form preview — just open file picker directly
+        const input = dom.medForm.querySelector('#photoInput');
+        if (input) input.click();
+      }
+      photoDialogMedId = null;
     });
   }
+
   if (photoRemoveBtn) {
     photoRemoveBtn.addEventListener('click', () => {
-      const removeCb = dom.medForm.querySelector('#removePhoto');
-      if (removeCb) removeCb.checked = true;
-      const preview = byId('photoPreview');
-      if (preview) preview.src = 'icons/icon-192.svg';
       if (photoDialog && typeof photoDialog.close === 'function') photoDialog.close();
+      if (photoDialogMedId) {
+        // Clicked from a med card — directly remove photo from state and save
+        const med = state.medications.find((m) => m.id === photoDialogMedId);
+        if (med) {
+          const prevPhoto = med.photoDataUrl || "";
+          med.photoDataUrl = "";
+          saveState();
+          renderAll();
+          if (prevPhoto) {
+            try { window.__photoUndo?.showUndoForRemoval(med.id, prevPhoto); } catch (e) {}
+          }
+        }
+      } else {
+        // Clicked from the form preview — check the remove checkbox
+        const removeCb = dom.medForm.querySelector('#removePhoto');
+        if (removeCb) removeCb.checked = true;
+        const preview = byId('photoPreview');
+        if (preview) preview.src = 'icons/icon-192.svg';
+      }
+      photoDialogMedId = null;
     });
   }
+
   if (photoCloseBtn) {
-    photoCloseBtn.addEventListener('click', () => { if (photoDialog && typeof photoDialog.close === 'function') photoDialog.close(); });
+    photoCloseBtn.addEventListener('click', () => {
+      if (photoDialog && typeof photoDialog.close === 'function') photoDialog.close();
+      photoDialogMedId = null;
+    });
   }
 
   // Undo toast for photo removal
