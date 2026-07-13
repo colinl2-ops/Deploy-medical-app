@@ -80,13 +80,11 @@
       const formData = new FormData(dom.medForm);
       const photoFile = formData.get("photo");
       const removePhotoFlag = formData.get("removePhoto");
+      // A file input always returns a File object; size > 0 means the user actually chose a file
+      const hasNewPhoto = photoFile instanceof File && photoFile.size > 0;
       let photoDataUrl = "";
-      if (removePhotoFlag) {
-        photoDataUrl = ""; // explicit removal requested
-      } else if (photoFile instanceof File) {
+      if (!removePhotoFlag && hasNewPhoto) {
         photoDataUrl = await fileToDataUrl(photoFile);
-      } else {
-        photoDataUrl = "";
       }
 
       const existingMed = editingMedicationId ? state.medications.find((entry) => entry.id === editingMedicationId) : null;
