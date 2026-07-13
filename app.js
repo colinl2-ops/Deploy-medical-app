@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260714-061406";
-const APP_RELEASE_LABEL = "Flag10";
+const APP_BUILD = "20260714-062143";
+const APP_RELEASE_LABEL = "Flag11";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -1040,6 +1040,20 @@ function bindCardToggleDelegation() {
   });
 }
 
+function attachPerToggleListeners() {
+  const toggles = Array.from(document.querySelectorAll('.card-toggle'));
+  toggles.forEach((toggle) => {
+    if (toggle.dataset.toggleListener === 'true') return;
+    toggle.addEventListener('click', () => {
+      const card = toggle.closest('section.card');
+      if (!card) return;
+      const collapsed = card.classList.toggle('is-collapsed');
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+    });
+    toggle.dataset.toggleListener = 'true';
+  });
+}
+
 function openMedicationFormCard() {
   const target = document.getElementById("medFormTarget");
   const card = target?.nextElementSibling?.classList?.contains("card") ? target.nextElementSibling : dom.medForm?.closest("section.card");
@@ -1638,6 +1652,7 @@ applyForceRefreshFlow().then((reloading) => {
   bindCloseAllButton();
   setupCollapsibleCards();
   bindCardToggleDelegation();
+  attachPerToggleListeners();
   bindEvents();
   resetProcedureEditMode();
   renderAll();
