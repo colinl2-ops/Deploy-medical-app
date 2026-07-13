@@ -2,207 +2,110 @@
   function createStateApi(config) {
     const keys = config.keys;
     const helpers = config.helpers;
+    // Use extracted helper modules when available
+    const scheduling = (typeof require === 'function') ? require('./state/scheduling') : null;
+    const formatters = (typeof require === 'function') ? require('./state/formatters') : null;
+    const validation = (typeof require === 'function') ? require('./state/validation') : null;
+    const helpersModule = (typeof require === 'function') ? require('./state/helpers') : null;
 
-    function buildDefaultState() {
+    const persistence = (typeof require === 'function') ? require('./state/persistence') : null;
+    const buildDefaultState = persistence?.buildDefaultState || function() {
       const first = helpers.defaultProfile();
-      return {
-        profiles: [first],
-        activeProfileId: first.id,
-        medications: [],
-        procedures: [],
-        doses: [],
-        settings: { highContrast: false }
-      };
-    }
+      return { profiles: [first], activeProfileId: first.id, medications: [], procedures: [], doses: [], settings: { highContrast: false } };
+    };
 
-    function normalizeState(parsed) {
-      if (!parsed || !Array.isArray(parsed.profiles) || parsed.profiles.length === 0) {
-        return null;
-      }
-
+    const normalizeState = persistence?.normalizeState || function(parsed) {
+      if (!parsed || !Array.isArray(parsed.profiles) || parsed.profiles.length === 0) return null;
       const profiles = parsed.profiles;
-      const resolvedActiveProfileId = profiles.some((profile) => profile.id === parsed.activeProfileId)
-        ? parsed.activeProfileId
-        : profiles[0].id;
+      const resolvedActiveProfileId = profiles.some((profile) => profile.id === parsed.activeProfileId) ? parsed.activeProfileId : profiles[0].id;
+      const migratedMeds = (parsed.medications || []).map((med) => ({ ...med, profileId: med.profileId || resolvedActiveProfileId }));
+      const migratedDoses = (parsed.doses || []).map((dose) => ({ ...dose, profileId: dose.profileId || resolvedActiveProfileId }));
+      const migratedProcedures = (parsed.procedures || []).map((procedure) => ({ ...procedure, profileId: procedure.profileId || resolvedActiveProfileId }));
+      return { profiles, activeProfileId: resolvedActiveProfileId, medications: migratedMeds, procedures: migratedProcedures, doses: migratedDoses, settings: parsed.settings || { highContrast: false } };
+    };
 
-      const migratedMeds = (parsed.medications || []).map((med) => ({
-        ...med,
-        profileId: med.profileId || resolvedActiveProfileId
-      }));
-
-      const migratedDoses = (parsed.doses || []).map((dose) => ({
-        ...dose,
-        profileId: dose.profileId || resolvedActiveProfileId
-      }));
-
-      const migratedProcedures = (parsed.procedures || []).map((procedure) => ({
-        ...procedure,
-        profileId: procedure.profileId || resolvedActiveProfileId
-      }));
-
-      return {
-        profiles,
-        activeProfileId: resolvedActiveProfileId,
-        medications: migratedMeds,
-        procedures: migratedProcedures,
-        doses: migratedDoses,
-        settings: parsed.settings || { highContrast: false }
-      };
-    }
-
-    function recoverLegacyMedications(activeProfileId) {
+    const recoverLegacyMedications = persistence?.recoverLegacyMedications || function(activeProfileId) {
       const legacy = helpers.parseJSON(localStorage.getItem(keys.LEGACY_MED_LIST_KEY) || "null");
-      if (!Array.isArray(legacy) || legacy.length === 0) {
-        return [];
-      }
+      if (!Array.isArray(legacy) || legacy.length === 0) return [];
+      return legacy.map((item) => ({ id: item.id || helpers.makeId(), profileId: activeProfileId, name: item.name || "Medication", strength: item.dose || "", purpose: "Imported from older app", stock: 0, pillsPerDose: 1, form: "tablet", repeats: 0, times: ["08:00"], foodRule: "none", frequency: "daily", weeklyDays: [], barcode: "", notes: item.notes || "", startDate: helpers.toDateKey(new Date()), photoDataUrl: "" }));
+    };
 
-      return legacy.map((item) => ({
-        id: item.id || helpers.makeId(),
-        profileId: activeProfileId,
-        name: item.name || "Medication",
-        strength: item.dose || "",
-        purpose: "Imported from older app",
-        stock: 0,
-        pillsPerDose: 1,
-        form: "tablet",
-        repeats: 0,
-        times: ["08:00"],
-        foodRule: "none",
-        frequency: "daily",
-        weeklyDays: [],
-        barcode: "",
-        notes: item.notes || "",
-        startDate: helpers.toDateKey(new Date()),
-        photoDataUrl: ""
-      }));
-    }
-
-    function recoverMedsBackup(activeProfileId) {
+    const recoverMedsBackup = persistence?.recoverMedsBackup || function(activeProfileId) {
       const backup = helpers.parseJSON(localStorage.getItem(keys.MEDS_BACKUP_KEY) || "null");
-      if (!Array.isArray(backup) || backup.length === 0) {
-        return [];
-      }
+      if (!Array.isArray(backup) || backup.length === 0) return [];
+      return backup.filter((item) => item && typeof item === "object" && item.name).map((item) => ({ id: item.id || helpers.makeId(), profileId: item.profileId || activeProfileId, name: item.name || "Medication", strength: item.strength || item.dose || "", purpose: item.purpose || "Imported from backup", stock: Number(item.stock ?? 0), pillsPerDose: Number(item.pillsPerDose ?? 1), form: item.form || "tablet", repeats: Number(item.repeats ?? 0), times: Array.isArray(item.times) && item.times.length > 0 ? item.times : ["08:00"], foodRule: item.foodRule || "none", frequency: item.frequency || "daily", weeklyDays: Array.isArray(item.weeklyDays) ? item.weeklyDays : [], barcode: item.barcode || "", notes: item.notes || "", startDate: item.startDate || helpers.toDateKey(new Date()), photoDataUrl: item.photoDataUrl || "" }));
+    };
 
-      return backup
-        .filter((item) => item && typeof item === "object" && item.name)
-        .map((item) => ({
-          id: item.id || helpers.makeId(),
-          profileId: item.profileId || activeProfileId,
-          name: item.name || "Medication",
-          strength: item.strength || item.dose || "",
-          purpose: item.purpose || "Imported from backup",
-          stock: Number(item.stock ?? 0),
-          pillsPerDose: Number(item.pillsPerDose ?? 1),
-          form: item.form || "tablet",
-          repeats: Number(item.repeats ?? 0),
-          times: Array.isArray(item.times) && item.times.length > 0 ? item.times : ["08:00"],
-          foodRule: item.foodRule || "none",
-          frequency: item.frequency || "daily",
-          weeklyDays: Array.isArray(item.weeklyDays) ? item.weeklyDays : [],
-          barcode: item.barcode || "",
-          notes: item.notes || "",
-          startDate: item.startDate || helpers.toDateKey(new Date()),
-          photoDataUrl: item.photoDataUrl || ""
-        }));
-    }
-
-    function recoverMedsFromStateSnapshot(rawState, activeProfileId) {
+    const recoverMedsFromStateSnapshot = persistence?.recoverMedsFromStateSnapshot || function(rawState, activeProfileId) {
       const normalized = normalizeState(rawState);
-      if (!normalized || !Array.isArray(normalized.medications) || normalized.medications.length === 0) {
-        return [];
-      }
+      if (!normalized || !Array.isArray(normalized.medications) || normalized.medications.length === 0) return [];
+      return normalized.medications.map((item) => ({ ...item, profileId: item.profileId || activeProfileId }));
+    };
 
-      return normalized.medications.map((item) => ({
-        ...item,
-        profileId: item.profileId || activeProfileId
-      }));
-    }
-
-    function loadState() {
-      const primary = normalizeState(helpers.parseJSON(localStorage.getItem(keys.STORAGE_KEY) || "null"));
-      if (primary) {
-        if (primary.medications.length === 0) {
-          const medsBackup = recoverMedsBackup(primary.activeProfileId);
-          if (medsBackup.length > 0) {
-            primary.medications = medsBackup;
-          } else {
-            const recovered = recoverLegacyMedications(primary.activeProfileId);
-            if (recovered.length > 0) {
-              primary.medications = recovered;
-            } else {
-              const snapshotMeds = recoverMedsFromStateSnapshot(
-                helpers.parseJSON(localStorage.getItem(keys.RECOVERY_SNAPSHOT_KEY) || "null"),
-                primary.activeProfileId
-              );
-              if (snapshotMeds.length > 0) {
-                primary.medications = snapshotMeds;
+    const loadState = persistence?.loadState || function() {
+      return persistence ? persistence.loadState(helpers, keys) : (function() {
+        const primary = normalizeState(helpers.parseJSON(localStorage.getItem(keys.STORAGE_KEY) || "null"));
+        if (primary) {
+          if (primary.medications.length === 0) {
+            const medsBackup = recoverMedsBackup(primary.activeProfileId);
+            if (medsBackup.length > 0) primary.medications = medsBackup;
+            else {
+              const recovered = recoverLegacyMedications(primary.activeProfileId);
+              if (recovered.length > 0) primary.medications = recovered;
+              else {
+                const snapshotMeds = recoverMedsFromStateSnapshot(helpers.parseJSON(localStorage.getItem(keys.RECOVERY_SNAPSHOT_KEY) || "null"), primary.activeProfileId);
+                if (snapshotMeds.length > 0) primary.medications = snapshotMeds;
               }
             }
           }
+          primary.medications = primary.medications.map((med) => helpers.fixMedicationDosePlan(med));
+          return primary;
         }
-        primary.medications = primary.medications.map((med) => helpers.fixMedicationDosePlan(med));
-        return primary;
-      }
-
-      const backup = normalizeState(helpers.parseJSON(localStorage.getItem(keys.BACKUP_STORAGE_KEY) || "null"));
-      if (backup) {
-        if (backup.medications.length === 0) {
-          const snapshotMeds = recoverMedsFromStateSnapshot(
-            helpers.parseJSON(localStorage.getItem(keys.RECOVERY_SNAPSHOT_KEY) || "null"),
-            backup.activeProfileId
-          );
-          if (snapshotMeds.length > 0) {
-            backup.medications = snapshotMeds;
+        const backup = normalizeState(helpers.parseJSON(localStorage.getItem(keys.BACKUP_STORAGE_KEY) || "null"));
+        if (backup) {
+          if (backup.medications.length === 0) {
+            const snapshotMeds = recoverMedsFromStateSnapshot(helpers.parseJSON(localStorage.getItem(keys.RECOVERY_SNAPSHOT_KEY) || "null"), backup.activeProfileId);
+            if (snapshotMeds.length > 0) backup.medications = snapshotMeds;
           }
+          backup.medications = backup.medications.map((med) => helpers.fixMedicationDosePlan(med));
+          return backup;
         }
-        backup.medications = backup.medications.map((med) => helpers.fixMedicationDosePlan(med));
-        return backup;
-      }
-
-      const fallback = buildDefaultState();
-      const medsBackup = recoverMedsBackup(fallback.activeProfileId);
-      if (medsBackup.length > 0) {
-        fallback.medications = medsBackup;
-        fallback.medications = fallback.medications.map((med) => helpers.fixMedicationDosePlan(med));
+        const fallback = buildDefaultState();
+        const medsBackup = recoverMedsBackup(fallback.activeProfileId);
+        if (medsBackup.length > 0) {
+          fallback.medications = medsBackup;
+          fallback.medications = fallback.medications.map((med) => helpers.fixMedicationDosePlan(med));
+          return fallback;
+        }
+        const snapshotMeds = recoverMedsFromStateSnapshot(helpers.parseJSON(localStorage.getItem(keys.RECOVERY_SNAPSHOT_KEY) || "null"), fallback.activeProfileId);
+        if (snapshotMeds.length > 0) {
+          fallback.medications = snapshotMeds;
+          fallback.medications = fallback.medications.map((med) => helpers.fixMedicationDosePlan(med));
+          return fallback;
+        }
+        const recovered = recoverLegacyMedications(fallback.activeProfileId);
+        if (recovered.length > 0) {
+          fallback.medications = recovered;
+          fallback.medications = fallback.medications.map((med) => helpers.fixMedicationDosePlan(med));
+        }
         return fallback;
-      }
+      })();
+    };
 
-      const snapshotMeds = recoverMedsFromStateSnapshot(
-        helpers.parseJSON(localStorage.getItem(keys.RECOVERY_SNAPSHOT_KEY) || "null"),
-        fallback.activeProfileId
-      );
-      if (snapshotMeds.length > 0) {
-        fallback.medications = snapshotMeds;
-        fallback.medications = fallback.medications.map((med) => helpers.fixMedicationDosePlan(med));
-        return fallback;
-      }
-
-      const recovered = recoverLegacyMedications(fallback.activeProfileId);
-      if (recovered.length > 0) {
-        fallback.medications = recovered;
-        fallback.medications = fallback.medications.map((med) => helpers.fixMedicationDosePlan(med));
-      }
-      return fallback;
-    }
-
-    function saveState(state) {
+    const saveState = persistence?.saveState || function(state) {
+      if (persistence) return persistence.saveState(state, helpers, keys);
       const serialized = JSON.stringify(state);
       const nextMeds = Array.isArray(state.medications) ? state.medications : [];
-
       localStorage.setItem(keys.STORAGE_KEY, serialized);
       localStorage.setItem(keys.BACKUP_STORAGE_KEY, serialized);
-
       if (nextMeds.length > 0) {
         localStorage.setItem(keys.MEDS_BACKUP_KEY, JSON.stringify(nextMeds));
         localStorage.setItem(keys.RECOVERY_SNAPSHOT_KEY, serialized);
         return;
       }
-
       const existingMedsBackup = helpers.parseJSON(localStorage.getItem(keys.MEDS_BACKUP_KEY) || "null");
-      if (!Array.isArray(existingMedsBackup)) {
-        localStorage.setItem(keys.MEDS_BACKUP_KEY, JSON.stringify([]));
-      }
-    }
+      if (!Array.isArray(existingMedsBackup)) localStorage.setItem(keys.MEDS_BACKUP_KEY, JSON.stringify([]));
+    };
 
     function getActiveProfile(state) {
       return state.profiles.find((profile) => profile.id === state.activeProfileId) || state.profiles[0];
@@ -242,41 +145,28 @@
       return plan;
     }
 
-    function normalizeDosePlan(value) {
-      if (!value || typeof value !== "object" || Array.isArray(value)) {
-        return {};
-      }
-
+    const normalizeDosePlan = scheduling?.normalizeDosePlan || function(value) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return {};
       return Object.entries(value).reduce((plan, [time, quantity]) => {
-        if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) {
-          return plan;
-        }
+        if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) return plan;
         const normalizedQuantity = Number(quantity);
-        if (!Number.isFinite(normalizedQuantity) || normalizedQuantity <= 0) {
-          return plan;
-        }
+        if (!Number.isFinite(normalizedQuantity) || normalizedQuantity <= 0) return plan;
         plan[time] = normalizedQuantity;
         return plan;
       }, {});
-    }
+    };
 
-    function hasDosePlan(med) {
-      return Boolean(med && med.dosePlan && Object.keys(med.dosePlan).length > 0);
-    }
+    const hasDosePlan = scheduling?.hasDosePlan || function(med) { return Boolean(med && med.dosePlan && Object.keys(med.dosePlan).length > 0); };
 
-    function getDoseQuantityForTime(med, time) {
+    const getDoseQuantityForTime = scheduling?.getDoseQuantityForTime || function(med, time) {
       const fallback = Number(med?.pillsPerDose ?? 1);
       const planned = Number(med?.dosePlan?.[time]);
-      if (Number.isFinite(planned) && planned > 0) {
-        return planned;
-      }
-      if (Number.isFinite(planned) && planned === -1) {
-        return -1;
-      }
+      if (Number.isFinite(planned) && planned > 0) return planned;
+      if (Number.isFinite(planned) && planned === -1) return -1;
       return Number.isFinite(fallback) && fallback > 0 ? fallback : 1;
-    }
+    };
 
-    function doseUnit(med) {
+    const doseUnit = formatters?.doseUnit || function(med) {
       switch (med.form) {
         case "cream": return "application(s)";
         case "drops": return "drop(s)";
@@ -288,22 +178,16 @@
         case "wafer": return "wafer(s)";
         default: return "tablet(s)";
       }
-    }
+    };
 
-    function friendlyFoodRule(rule) {
-      if (rule === "before") {
-        return "Before food";
-      }
-      if (rule === "after") {
-        return "After food";
-      }
-      if (rule === "with") {
-        return "With food";
-      }
+    const friendlyFoodRule = formatters?.friendlyFoodRule || function(rule) {
+      if (rule === "before") return "Before food";
+      if (rule === "after") return "After food";
+      if (rule === "with") return "With food";
       return "No food rule";
-    }
+    };
 
-    function friendlyForm(form) {
+    const friendlyForm = formatters?.friendlyForm || function(form) {
       switch (form) {
         case "cream": return "Cream";
         case "drops": return "Drops";
@@ -315,47 +199,26 @@
         case "wafer": return "Wafer";
         default: return "Tablet";
       }
-    }
+    };
 
-    function friendlyFrequency(freq) {
-      if (freq === "twiceDaily") {
-        return "Twice daily";
-      }
-      if (freq === "everyOtherDay") {
-        return "Every other day";
-      }
-      if (freq === "weekly") {
-        return "Weekly";
-      }
-      if (freq === "asRequired") {
-        return "As required";
-      }
+    const friendlyFrequency = formatters?.friendlyFrequency || function(freq) {
+      if (freq === "twiceDaily") return "Twice daily";
+      if (freq === "everyOtherDay") return "Every other day";
+      if (freq === "weekly") return "Weekly";
+      if (freq === "asRequired") return "As required";
       return "Daily";
-    }
+    };
 
-    function friendlyWeeklyDays(days) {
+    const friendlyWeeklyDays = formatters?.friendlyWeeklyDays || function(days) {
       const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      if (!Array.isArray(days) || days.length === 0) {
-        return "";
-      }
-      return days
-        .slice()
-        .sort((a, b) => a - b)
-        .map((d) => names[d] || "")
-        .filter(Boolean)
-        .join(", ");
-    }
+      if (!Array.isArray(days) || days.length === 0) return "";
+      return days.slice().sort((a,b)=>a-b).map((d)=>names[d]||"").filter(Boolean).join(", ");
+    };
 
-    function formatDosePlan(med) {
-      if (med.frequency === "asRequired") {
-        return `${Number(med.pillsPerDose || 1)} ${doseUnit(med)}`;
-      }
-
+    const formatDosePlan = helpersModule?.formatDosePlan || function(med) {
+      if (med.frequency === "asRequired") return `${Number(med.pillsPerDose || 1)} ${doseUnit(med)}`;
       const times = Array.isArray(med.times) ? med.times : [];
-      if (times.length === 0) {
-        return `No schedule - ${Number(med.pillsPerDose || 1)} ${doseUnit(med)}`;
-      }
-
+      if (times.length === 0) return `No schedule - ${Number(med.pillsPerDose || 1)} ${doseUnit(med)}`;
       return times
         .map((time) => {
           const qty = getDoseQuantityForTime(med, time);
@@ -363,37 +226,28 @@
           return `${time} ${qtyText}`;
         })
         .join(", ");
-    }
+    };
 
-    function medDisplayLine(med) {
-      if (med.frequency === "asRequired") {
-        return `As required - ${med.pillsPerDose} ${doseUnit(med)}`;
-      }
+    const medDisplayLine = helpersModule?.medDisplayLine || function(med) {
+      if (med.frequency === "asRequired") return `As required - ${med.pillsPerDose} ${doseUnit(med)}`;
       return formatDosePlan(med);
-    }
+    };
 
-    function statusText(status) {
-      if (status === "taken") {
-        return "Taken";
-      }
-      if (status === "skipped") {
-        return "Skipped";
-      }
+    const statusText = helpersModule?.statusText || function(status) {
+      if (status === "taken") return "Taken";
+      if (status === "skipped") return "Skipped";
       return "Pending";
-    }
+    };
 
-    function serializeDosePlan(med) {
-      if (!hasDosePlan(med)) {
-        return "";
-      }
-
+    const serializeDosePlan = helpersModule?.serializeDosePlan || function(med) {
+      if (!hasDosePlan(med)) return "";
       return Object.entries(med.dosePlan)
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([time, quantity]) => `${time}=${quantity}`)
         .join(", ");
-    }
+    };
 
-    function fixMedicationDosePlan(med) {
+    const fixMedicationDosePlan = helpersModule?.fixMedicationDosePlan || function(med) {
       if (med.frequency === "asRequired") {
         med.dosePlan = {};
         med.times = [];
@@ -401,50 +255,33 @@
         const fallback = Number(med.pillsPerDose ?? 1);
         const newPlan = {};
         med.times.forEach((time) => {
-          if (med.dosePlan?.[time]) {
-            newPlan[time] = med.dosePlan[time];
-          } else {
-            newPlan[time] = fallback;
-          }
+          if (med.dosePlan?.[time]) newPlan[time] = med.dosePlan[time]; else newPlan[time] = fallback;
         });
         med.dosePlan = newPlan;
-        console.log(`Fixed ${med.name}: dosePlan now =`, med.dosePlan);
+        try { console.log(`Fixed ${med.name}: dosePlan now =`, med.dosePlan); } catch (e) {}
       }
       return med;
-    }
+    };
 
-    function pillsNeededPerDay(med) {
-      if (med.frequency === "asRequired") {
-        return 0;
-      }
+    const pillsNeededPerDay = scheduling?.pillsNeededPerDay || function(med) {
+      if (med.frequency === "asRequired") return 0;
       const timesCount = Math.max(1, med.times.length);
       const fallbackDose = Number(med.pillsPerDose) || 1;
       const scheduledTotal = med.times.reduce((sum, time) => sum + getDoseQuantityForTime(med, time), 0);
       const base = med.frequency === "twiceDaily" && med.times.length < 2
         ? scheduledTotal + (Math.max(timesCount, 2) - med.times.length) * fallbackDose
         : (scheduledTotal || fallbackDose * timesCount);
-
-      if (med.frequency === "everyOtherDay") {
-        return base / 2;
-      }
+      if (med.frequency === "everyOtherDay") return base / 2;
       if (med.frequency === "weekly") {
         const weeklyDays = med.weeklyDays?.length ? med.weeklyDays.length : 1;
         return (base * weeklyDays) / 7;
       }
       return base;
-    }
+    };
 
-    function daysLeft(med) {
-      const needed = pillsNeededPerDay(med);
-      if (needed <= 0) {
-        return Infinity;
-      }
-      return Number(med.stock) / needed;
-    }
+    const daysLeft = helpersModule?.daysLeft || function(med) { const needed = pillsNeededPerDay(med); if (needed <= 0) return Infinity; return Number(med.stock) / needed; };
 
-    function doseId(medId, dateKey, time) {
-      return `${medId}|${dateKey}|${time}`;
-    }
+    const doseId = scheduling?.doseId || function(medId, dateKey, time) { return `${medId}|${dateKey}|${time}`; };
 
     function minHoursBetweenDoses(med) {
       const dailyNeed = pillsNeededPerDay(med);
@@ -454,33 +291,21 @@
       return 24 / dailyNeed;
     }
 
-    function includesDay(med, date) {
+    const includesDay = scheduling?.includesDay || function(med, date) {
       const start = new Date(`${med.startDate}T00:00:00`);
       const targetDateKey = date.toISOString().slice(0, 10);
       const target = new Date(`${targetDateKey}T00:00:00`);
       const dayDiff = Math.floor((target - start) / (1000 * 60 * 60 * 24));
-      if (dayDiff < 0) {
-        return false;
-      }
-
-      if (med.frequency === "asRequired") {
-        return false;
-      }
-
-      if (med.frequency === "everyOtherDay") {
-        return dayDiff % 2 === 0;
-      }
-
+      if (dayDiff < 0) return false;
+      if (med.frequency === "asRequired") return false;
+      if (med.frequency === "everyOtherDay") return dayDiff % 2 === 0;
       if (med.frequency === "weekly") {
         const weekly = med.weeklyDays || [];
-        if (weekly.length === 0) {
-          return target.getDay() === start.getDay();
-        }
+        if (weekly.length === 0) return target.getDay() === start.getDay();
         return weekly.includes(target.getDay());
       }
-
       return true;
-    }
+    };
 
     function findMed(state, medId) {
       return state.medications.find((med) => med.id === medId);
@@ -531,34 +356,25 @@
       return all.sort((a, b) => a.time.localeCompare(b.time));
     }
 
-    function logPrnDose(state, med) {
+    const actionsModule = (typeof require === 'function') ? require('./state/actions') : null;
+    const logPrnDose = actionsModule?.logPrnDose || function(state, med) {
       const todayKey = helpers.toDateKey(new Date());
       const now = new Date();
-      const time = now.toTimeString().slice(0, 5);
+      const time = now.toTimeString().slice(0,5);
       const id = `${med.id}|${todayKey}|prn-${now.getTime()}`;
-      const dose = {
-        id,
-        profileId: state.activeProfileId,
-        medId: med.id,
-        dateKey: todayKey,
-        time,
-        status: "taken",
-        snoozedUntil: null,
-        timestamp: now.toISOString()
-      };
-
+      const dose = { id, profileId: state.activeProfileId, medId: med.id, dateKey: todayKey, time, status: 'taken', snoozedUntil: null, timestamp: now.toISOString() };
       state.doses.push(dose);
       med.stock = Math.max(0, Number(med.stock) - getDoseQuantityForTime(med, time));
       saveState(state);
       return dose;
-    }
+    };
 
-    function overduePendingDoses(state) {
+    const overduePendingDoses = actionsModule?.overduePendingDoses || function(state) {
       const todayKey = helpers.toDateKey(new Date());
-      return state.doses.filter((dose) => dose.profileId === state.activeProfileId && dose.status === "pending" && dose.dateKey < todayKey);
-    }
+      return state.doses.filter((dose) => dose.profileId === state.activeProfileId && dose.status === 'pending' && dose.dateKey < todayKey);
+    };
 
-    function backfillRecentDoseHistory(state, days = 14, context = {}) {
+    const backfillRecentDoseHistory = actionsModule?.backfillRecentDoseHistory || function(state, days = 14, context = {}) {
       const totalDays = Number(days);
       for (let i = 1; i <= totalDays; i += 1) {
         const date = new Date();
@@ -569,54 +385,35 @@
           doseHistoryDays: context.doseHistoryDays ?? totalDays
         });
       }
-    }
+    };
 
-    function catchUpOverdueDoses(state, context = {}) {
+    const catchUpOverdueDoses = actionsModule?.catchUpOverdueDoses || function(state, context = {}) {
       backfillRecentDoseHistory(state, context.days ?? 14, context);
       const overdue = overduePendingDoses(state);
-      if (overdue.length === 0) {
-        return 0;
-      }
-
+      if (overdue.length === 0) return 0;
       overdue.forEach((dose) => {
         const med = findMed(state, dose.medId);
-        if (med) {
-          med.stock = Math.max(0, Number(med.stock) - getDoseQuantityForTime(med, dose.time));
-        }
-        dose.status = "taken";
+        if (med) med.stock = Math.max(0, Number(med.stock) - getDoseQuantityForTime(med, dose.time));
+        dose.status = 'taken';
         dose.timestamp = new Date().toISOString();
         dose.snoozedUntil = null;
       });
-
       saveState(state);
       return overdue.length;
-    }
+    };
 
-    function snoozeDose(dose) {
-      dose.status = "pending";
-      dose.snoozedUntil = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-      return dose;
-    }
+    const snoozeDose = actionsModule?.snoozeDose || function(dose) { dose.status = 'pending'; dose.snoozedUntil = new Date(Date.now() + 10*60*1000).toISOString(); return dose; };
 
-    function untakeDose(state, dose) {
+    const untakeDose = actionsModule?.untakeDose || function(state, dose) {
       const med = findMed(state, dose.medId);
-      if (dose.status === "taken" && med) {
-        med.stock = Number(med.stock) + getDoseQuantityForTime(med, dose.time);
-      }
-
-      dose.status = "pending";
+      if (dose.status === 'taken' && med) med.stock = Number(med.stock) + getDoseQuantityForTime(med, dose.time);
+      dose.status = 'pending';
       dose.timestamp = null;
       dose.snoozedUntil = null;
       return dose;
-    }
+    };
 
-    function isMorningDose(dose) {
-      const hour = Number(String(dose.time || "").split(":")[0]);
-      if (!Number.isFinite(hour)) {
-        return true;
-      }
-      return hour < 12;
-    }
+    const isMorningDose = helpersModule?.isMorningDose || function(dose) { const hour = Number(String(dose.time || "").split(":")[0]); if (!Number.isFinite(hour)) return true; return hour < 12; };
 
     function markAllByPeriodTaken(state, period, context = {}) {
       const today = createDueDosesForDate(state, new Date(), context);
@@ -645,13 +442,11 @@
       return target.length;
     }
 
-    function repeatsCount(med) {
+    const repeatsCount = validation?.repeatsCount || function(med) {
       const value = Number(med.repeats ?? 0);
-      if (!Number.isFinite(value) || value < 0) {
-        return 0;
-      }
+      if (!Number.isFinite(value) || value < 0) return 0;
       return Math.floor(value);
-    }
+    };
 
     function refillFlag(med) {
       const d = daysLeft(med);
@@ -695,6 +490,8 @@
       return ` (${qty}/day)`;
     }
 
+    const exportsModule = (typeof require === 'function') ? require('./state/exports') : null;
+
     function buildRefillAlertMessages(meds, thresholds = [7, 3, 1]) {
       const messages = [];
       meds.forEach((med) => {
@@ -708,16 +505,14 @@
       return messages;
     }
 
-    function buildMedicalCardText(profile, meds) {
+    const buildMedicalCardText = exportsModule?.buildMedicalCardText || function(profile, meds) {
       const hasAsRequired = meds.some((med) => med.frequency === "asRequired");
       const medsLabel = meds
         .map((med) => `${med.frequency === "asRequired" ? "*" : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`)
         .join(", ") || "None";
-
       const asRequiredNote = hasAsRequired ? " [* as needed]" : "";
-
       return `${profile.name} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${medsLabel}${asRequiredNote}`;
-    }
+    };
 
     function caregiverStatusMessage(profileName, todayDoses) {
       const taken = todayDoses.filter((dose) => dose.status === "taken").length;
@@ -729,7 +524,12 @@
       return `medication-list-${safeName}${dateKey}.txt`;
     }
 
-    function buildMedicationListText(profile, meds, procedures, dateLabel) {
+    const buildMedicationListText = exportsModule?.buildMedicationListText || function(profile, meds, procedures, dateLabel) {
+      const repeatsCountFn = repeatsCount;
+      const formatDosePlanFn = formatDosePlan;
+      const procedureSortKeyFn = procedureSortKey;
+      const friendlyWeeklyDaysFn = friendlyWeeklyDays;
+      const formatDosePlanWrapper = (med) => formatDosePlanFn(med);
       const sortedMeds = meds
         .map((med) => ({ med, left: daysLeft(med) }))
         .sort((a, b) => {
@@ -816,7 +616,7 @@
       return `medication-summary-am-pm-${safeName}${dateKey}.txt`;
     }
 
-    function buildAmPmSummaryText(profile, meds, generatedLabel) {
+    const buildAmPmSummaryText = exportsModule?.buildAmPmSummaryText || function(profile, meds, generatedLabel) {
       const sortedMeds = meds
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -883,7 +683,7 @@
       }
 
       return lines.join("\n");
-    }
+    };
 
     function normalizeImportedBackup(parsed, context = {}) {
       const makeId = context.makeId;
@@ -1000,23 +800,12 @@
       return forceState.reloaded;
     }
 
-    function buildMedicationCsvRows(params) {
-      const {
-        visibleMeds,
-        allDoses,
-        fallbackDoses,
-        dateKey,
-        findMedById
-      } = params;
-
+    const buildMedicationCsvRows = exportsModule?.buildMedicationCsvRows || function(params) {
+      const { visibleMeds, allDoses, fallbackDoses, dateKey, findMedById } = params;
       const rows = ["date,time,medication,status,timestamp"];
       const visibleMedIds = new Set(visibleMeds.map((med) => med.id));
-
       let dosesForExport = allDoses.filter((dose) => visibleMedIds.has(dose.medId));
-      if (dosesForExport.length === 0) {
-        dosesForExport = fallbackDoses.filter((dose) => visibleMedIds.has(dose.medId));
-      }
-
+      if (dosesForExport.length === 0) dosesForExport = fallbackDoses.filter((dose) => visibleMedIds.has(dose.medId));
       if (dosesForExport.length === 0 && visibleMeds.length > 0) {
         visibleMeds.forEach((med) => {
           rows.push(`${dateKey},${(med.times && med.times[0]) || ""},${med.name},planned,`);
@@ -1027,17 +816,12 @@
           rows.push(`${dose.dateKey},${dose.time},${med ? med.name : "Unknown"},${dose.status},${dose.timestamp || ""}`);
         });
       }
-
       return rows;
-    }
+    };
 
-    function buildProceduresCsvRows(procedures) {
+    const buildProceduresCsvRows = exportsModule?.buildProceduresCsvRows || function(procedures) {
       const rows = ["date,procedure_name,doctor_name,notes"];
-
-      const sortedProcedures = procedures
-        .slice()
-        .sort((a, b) => procedureSortKey(b.date || "").localeCompare(procedureSortKey(a.date || "")));
-
+      const sortedProcedures = procedures.slice().sort((a, b) => procedureSortKey(b.date || "").localeCompare(procedureSortKey(a.date || "")));
       sortedProcedures.forEach((procedure) => {
         const safeDate = JSON.stringify(String(procedure.date || ""));
         const safeName = JSON.stringify(String(procedure.procedureName || ""));
@@ -1045,9 +829,8 @@
         const safeNotes = JSON.stringify(String(procedure.notes || ""));
         rows.push(`${safeDate},${safeName},${safeDoctor},${safeNotes}`);
       });
-
       return rows;
-    }
+    };
 
     function checkSafetyForNewMed(newMed, context = {}, excludeMedId = null) {
       const existing = context.existingMeds || [];
@@ -1093,26 +876,16 @@
         .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6);
     }
 
-    function isValidDateKey(value) {
-      return /^\d{4}-\d{2}-\d{2}$/.test(value);
-    }
+    const isValidDateKey = validation?.isValidDateKey || function(value) { return /^\d{4}-\d{2}-\d{2}$/.test(value); };
 
-    function isValidPartialDate(value) {
-      return /^\d{4}(-\d{2}(-\d{2})?)?$/.test(value);
-    }
+    const isValidPartialDate = validation?.isValidPartialDate || function(value) { return /^\d{4}(-\d{2}(-\d{2})?)?$/.test(value); };
 
-    function procedureSortKey(value) {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        return value;
-      }
-      if (/^\d{4}-\d{2}$/.test(value)) {
-        return `${value}-00`;
-      }
-      if (/^\d{4}$/.test(value)) {
-        return `${value}-00-00`;
-      }
+    const procedureSortKey = validation?.procedureSortKey || function(value) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+      if (/^\d{4}-\d{2}$/.test(value)) return `${value}-00`;
+      if (/^\d{4}$/.test(value)) return `${value}-00-00`;
       return "0000-00-00";
-    }
+    };
 
     function recoverProfileMedicationVisibility(state, context) {
       const { getActiveProfile, saveState } = context;
@@ -1210,3 +983,13 @@
 
   global.createStateApi = createStateApi;
 })(window);
+
+// If running under Node (tests), also export `createStateApi` for require()
+try {
+  if (typeof module !== 'undefined' && module.exports && typeof createStateApi !== 'undefined') {
+    module.exports = module.exports || {};
+    module.exports.createStateApi = createStateApi;
+  }
+} catch (e) {
+  // ignore in browsers
+}
