@@ -462,6 +462,26 @@ button:disabled {
   margin: 0.35rem 0;
 }
 
+.order-priority-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.go-to-med-btn {
+  flex-shrink: 0;
+  width: auto;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.9rem;
+}
+
+.med-card.highlighted {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+  transition: outline-color 0.3s ease;
+}
+
 .hidden {
   display: none;
 }

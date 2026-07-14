@@ -122,10 +122,29 @@
 
       ordered.forEach((item) => {
         const li = document.createElement("li");
+        li.className = "order-priority-item";
         const leftText = Number.isFinite(item.left) ? `${item.left.toFixed(1)} day(s) left` : "No schedule";
-        li.textContent = `${item.med.name} ${item.med.strength || ""} - ${leftText} - Repeats: ${repeatsCount(item.med)}`.trim();
+        const label = document.createElement("span");
+        label.textContent = `${item.med.name} ${item.med.strength || ""} - ${leftText} - Repeats: ${repeatsCount(item.med)}`.trim();
+
+        const goBtn = document.createElement("button");
+        goBtn.type = "button";
+        goBtn.className = "go-to-med-btn";
+        goBtn.textContent = "View";
+        goBtn.setAttribute("aria-label", `Go to ${item.med.name}`);
+        goBtn.addEventListener("click", () => jumpToMedication(item.med.id));
+
+        li.append(label, goBtn);
         dom.orderList.appendChild(li);
       });
+    }
+
+    function jumpToMedication(medId) {
+      const card = document.getElementById(`med-card-${medId}`);
+      if (!card) return;
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      card.classList.add("highlighted");
+      setTimeout(() => card.classList.remove("highlighted"), 1500);
     }
 
     function renderMeds(meds, context) {
@@ -158,6 +177,9 @@
 
       sortedMeds.forEach((med) => {
         const node = dom.medTemplate.content.cloneNode(true);
+        const cardEl = node.querySelector(".med-card");
+        cardEl.id = `med-card-${med.id}`;
+        cardEl.dataset.medId = med.id;
         const photoImg = node.querySelector(".med-photo");
         photoImg.src = med.photoDataUrl || "icons/icon-192.svg";
         photoImg.dataset.medId = med.id;
@@ -419,6 +441,7 @@
       renderProcedures,
       renderRunningOut,
       renderOrderPriority,
+      jumpToMedication,
       renderMeds,
       renderTimeline,
       renderAdherence,
