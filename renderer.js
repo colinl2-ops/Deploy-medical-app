@@ -142,9 +142,18 @@
     function jumpToMedication(medId) {
       const card = document.getElementById(`med-card-${medId}`);
       if (!card) return;
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
-      card.classList.add("highlighted");
-      setTimeout(() => card.classList.remove("highlighted"), 1500);
+
+      const sectionCard = card.closest("section.card");
+      const toggle = sectionCard?.querySelector(".card-toggle");
+      if (sectionCard && sectionCard.classList.contains("is-collapsed") && toggle) {
+        toggle.click();
+      }
+
+      setTimeout(() => {
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        card.classList.add("highlighted");
+        setTimeout(() => card.classList.remove("highlighted"), 1500);
+      }, 50);
     }
 
     function renderMeds(meds, context) {
