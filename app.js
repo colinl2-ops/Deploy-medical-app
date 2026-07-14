@@ -5,8 +5,8 @@ const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260714-202724";
-const APP_RELEASE_LABEL = "Flag 18";
+const APP_BUILD = "20260714-210950";
+const APP_RELEASE_LABEL = "Flag 19";
 const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
 const CLOSE_ALL_CHANNEL = "med-helper-close-all";
 const REFILL_THRESHOLDS = [7, 3, 1];
@@ -861,27 +861,29 @@ async function fileToDataUrl(file) {
       resolve("");
       return;
     }
-    // If the file is small, read directly. Otherwise, resize via canvas to limit size.
-    const MAX_DIM = 1200;
+    // The largest the app ever displays a medication photo is the preview
+    // dialog (max-width 540px). Thumbnails are only 86px. Storing far more
+    // resolution than that just wastes localStorage space, so always resize
+    // down to MAX_DIM and always re-encode as compressed JPEG (never keep
+    // the original file bytes, even if it was already small - an
+    // uncompressed screenshot/PNG can still be large).
+    const MAX_DIM = 640;
+    const JPEG_QUALITY = 0.6;
     const reader = new FileReader();
     reader.onerror = () => resolve("");
     reader.onload = () => {
       try {
         const img = new Image();
         img.onload = () => {
-          let { width, height } = img;
-          if (width <= MAX_DIM && height <= MAX_DIM) {
-            resolve(String(reader.result || ""));
-            return;
-          }
+          const { width, height } = img;
           const ratio = Math.min(1, MAX_DIM / Math.max(width, height));
           const canvas = document.createElement('canvas');
-          canvas.width = Math.round(width * ratio);
-          canvas.height = Math.round(height * ratio);
+          canvas.width = Math.max(1, Math.round(width * ratio));
+          canvas.height = Math.max(1, Math.round(height * ratio));
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           try {
-            const compressed = canvas.toDataURL('image/jpeg', 0.8);
+            const compressed = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
             resolve(compressed);
           } catch (e) {
             resolve(String(reader.result || ""));
