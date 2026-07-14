@@ -94,17 +94,52 @@
 
     const saveState = persistence?.saveState || function(state) {
       if (persistence) return persistence.saveState(state, helpers, keys);
-      const serialized = JSON.stringify(state);
-      const nextMeds = Array.isArray(state.medications) ? state.medications : [];
-      localStorage.setItem(keys.STORAGE_KEY, serialized);
-      localStorage.setItem(keys.BACKUP_STORAGE_KEY, serialized);
-      if (nextMeds.length > 0) {
-        localStorage.setItem(keys.MEDS_BACKUP_KEY, JSON.stringify(nextMeds));
-        localStorage.setItem(keys.RECOVERY_SNAPSHOT_KEY, serialized);
+      // Photos are the dominant storage cost. Keep full photo data only in the
+      // primary STORAGE_KEY; strip it from the redundant backup/recovery copies
+      // so a few photos don't multiply localStorage usage ~4x.
+      const stripPhotos = (meds) => meds.map((med) => (med && med.photoDataUrl ? { ...med, photoDataUrl: "" } : med));
+
+      const tryWrite = (obj) => {
+        const nextMeds = Array.isArray(obj.medications) ? obj.medications : [];
+        const lightMeds = stripPhotos(nextMeds);
+        const lightState = { ...obj, medications: lightMeds };
+        const serialized = JSON.stringify(obj);
+        const lightSerialized = JSON.stringify(lightState);
+        localStorage.setItem(keys.STORAGE_KEY, serialized);
+        localStorage.setItem(keys.BACKUP_STORAGE_KEY, lightSerialized);
+        if (nextMeds.length > 0) {
+          localStorage.setItem(keys.MEDS_BACKUP_KEY, JSON.stringify(lightMeds));
+          localStorage.setItem(keys.RECOVERY_SNAPSHOT_KEY, lightSerialized);
+          return;
+        }
+        const existingMedsBackup = helpers.parseJSON(localStorage.getItem(keys.MEDS_BACKUP_KEY) || "null");
+        if (!Array.isArray(existingMedsBackup)) localStorage.setItem(keys.MEDS_BACKUP_KEY, JSON.stringify([]));
+      };
+
+      try {
+        tryWrite(state);
         return;
+      } catch (e) {
+        // Likely quota exceeded. Attempt a graceful trim: remove photoDataUrl from all meds and retry.
+        try {
+          const trimmed = JSON.parse(JSON.stringify(state));
+          if (Array.isArray(trimmed.medications)) {
+            trimmed.medications.forEach((m) => { if (m && m.photoDataUrl) m.photoDataUrl = ""; });
+          }
+          trimmed.settings = trimmed.settings || {};
+          trimmed.settings.photoStorageTrimmed = true;
+          tryWrite(trimmed);
+          return;
+        } catch (e2) {
+          try {
+            localStorage.removeItem(keys.MEDS_BACKUP_KEY);
+            const minimal = { profiles: state.profiles || [], activeProfileId: state.activeProfileId, medications: [], procedures: state.procedures || [], doses: state.doses || [], settings: state.settings || {} };
+            tryWrite(minimal);
+          } catch (e3) {
+            // Give up silently; there is nothing further we can do here.
+          }
+        }
       }
-      const existingMedsBackup = helpers.parseJSON(localStorage.getItem(keys.MEDS_BACKUP_KEY) || "null");
-      if (!Array.isArray(existingMedsBackup)) localStorage.setItem(keys.MEDS_BACKUP_KEY, JSON.stringify([]));
     };
 
     function getActiveProfile(state) {
