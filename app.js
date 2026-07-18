@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260718-185112";
-const APP_RELEASE_LABEL = "Flag 23";
+const APP_BUILD = "20260718-205734";
+const APP_RELEASE_LABEL = "Flag 24";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -119,6 +119,92 @@ let muteAlarmsUntilKey = null;
 let alarmCooldownUntil = 0;
 let editingMedicationId = null;
 let editingProcedureId = null;
+let medicationFormIsDirty = false;
+let medicationFormSyncing = false;
+let medicationStatusTimeoutId = null;
+
+function medicationFormHasPendingChanges() {
+  return medicationFormIsDirty || editingMedicationId !== null;
+}
+
+function updateMedicationAbandonButtonState() {
+  if (!dom.medCancelEditBtn) {
+    return;
+  }
+
+  const shouldShow = medicationFormHasPendingChanges();
+  dom.medCancelEditBtn.classList.toggle("hidden", !shouldShow);
+  dom.medCancelEditBtn.textContent = "Abandon Changes";
+}
+
+function setMedicationFormDirty(isDirty) {
+  medicationFormIsDirty = Boolean(isDirty);
+  updateMedicationAbandonButtonState();
+}
+
+function flashMedicationStatus(message) {
+  if (!dom.medSavedFlag) {
+    return;
+  }
+
+  if (medicationStatusTimeoutId) {
+    clearTimeout(medicationStatusTimeoutId);
+    medicationStatusTimeoutId = null;
+  }
+
+  dom.medSavedFlag.textContent = message || "";
+  dom.medSavedFlag.classList.remove("hidden");
+  dom.medSavedFlag.classList.add("visible");
+
+  medicationStatusTimeoutId = window.setTimeout(() => {
+    if (!dom.medSavedFlag) {
+      medicationStatusTimeoutId = null;
+      return;
+    }
+
+    dom.medSavedFlag.textContent = "";
+    dom.medSavedFlag.classList.add("hidden");
+    dom.medSavedFlag.classList.remove("visible");
+    medicationStatusTimeoutId = null;
+  }, 2000);
+}
+
+function clearMedicationFormPreview() {
+  try {
+    const input = dom.medForm.querySelector('#photoInput');
+    if (input) input.value = '';
+    const removeCb = dom.medForm.querySelector('#removePhoto');
+    if (removeCb) removeCb.checked = false;
+    const preview = document.getElementById('photoPreview');
+    if (preview) preview.src = 'icons/icon-192.svg';
+  } catch (e) {}
+}
+
+function markMedicationFormDirty() {
+  if (medicationFormSyncing) {
+    return;
+  }
+  setMedicationFormDirty(true);
+}
+
+function medicationFormBlockMessage() {
+  if (dom.safetyMessage) {
+    dom.safetyMessage.textContent = "Save or abandon changes before leaving the medication form.";
+  }
+}
+
+function canCollapseMedicationForm(card) {
+  if (!card || !dom.medForm || !card.contains(dom.medForm)) {
+    return true;
+  }
+
+  if (!medicationFormHasPendingChanges()) {
+    return true;
+  }
+
+  medicationFormBlockMessage();
+  return false;
+}
 
 function requestCloseAllWindows() {
   const cards = Array.from(document.querySelectorAll("main section.card"));
@@ -131,6 +217,9 @@ function requestCloseAllWindows() {
     }
     const isExpanded = toggle.getAttribute("aria-expanded") === "true";
     if (!isExpanded) {
+      return;
+    }
+    if (!canCollapseMedicationForm(card)) {
       return;
     }
     card.classList.add("is-collapsed");
@@ -563,6 +652,15 @@ function renderMeds(meds) {
     doseUnit,
     refillFlag,
     friendlyForm,
+    beginMedicationFormSync: () => {
+      medicationFormSyncing = true;
+    },
+    endMedicationFormSync: () => {
+      medicationFormSyncing = false;
+    },
+    clearMedicationFormDirty: () => {
+      setMedicationFormDirty(false);
+    },
     setEditingMedicationId: (id) => {
       editingMedicationId = id;
     },
@@ -612,6 +710,7 @@ function updateMedicationSubmitState() {
 
 function resetMedicationEditMode() {
   editingMedicationId = null;
+  setMedicationFormDirty(false);
   if (dom.medSubmitBtn) {
     dom.medSubmitBtn.textContent = "Save Medication";
   }
@@ -622,6 +721,20 @@ function resetMedicationEditMode() {
     dom.medForm.startDate.value = toDateKey(new Date());
   }
   updateMedicationSubmitState();
+  updateMedicationAbandonButtonState();
+}
+
+function abandonMedicationChanges() {
+  medicationFormSyncing = true;
+  dom.medForm.reset();
+  resetMedicationEditMode();
+  clearMedicationFormPreview();
+  flashMedicationStatus("Changes abandoned.");
+  if (dom.safetyMessage) {
+    dom.safetyMessage.textContent = "";
+  }
+  updateMedicationSubmitState();
+  medicationFormSyncing = false;
 }
 
 function renderTimeline(todayDoses, meds) {
@@ -1045,6 +1158,10 @@ async function importBackup(file) {
 }
 
 function switchUser() {
+  if (medicationFormHasPendingChanges()) {
+    medicationFormBlockMessage();
+    return;
+  }
   if (state.profiles.length < 2) {
     dom.safetyMessage.textContent = "Only one user exists. Use Add Second User first.";
     return;
@@ -1091,6 +1208,11 @@ function setupCollapsibleCards() {
 
     toggleBtn.addEventListener("click", () => {
       const collapsed = card.classList.toggle("is-collapsed");
+      if (collapsed && !canCollapseMedicationForm(card)) {
+        card.classList.remove("is-collapsed");
+        toggleBtn.setAttribute("aria-expanded", "true");
+        return;
+      }
       toggleBtn.setAttribute("aria-expanded", String(!collapsed));
     });
 
@@ -1111,6 +1233,11 @@ function bindCardToggleDelegation() {
     const card = toggle.closest('section.card');
     if (!card) return;
     const collapsed = card.classList.toggle('is-collapsed');
+    if (collapsed && !canCollapseMedicationForm(card)) {
+      card.classList.remove('is-collapsed');
+      toggle.setAttribute('aria-expanded', 'true');
+      return;
+    }
     toggle.setAttribute('aria-expanded', String(!collapsed));
   });
 }
@@ -1123,6 +1250,11 @@ function attachPerToggleListeners() {
       const card = toggle.closest('section.card');
       if (!card) return;
       const collapsed = card.classList.toggle('is-collapsed');
+      if (collapsed && !canCollapseMedicationForm(card)) {
+        card.classList.remove('is-collapsed');
+        toggle.setAttribute('aria-expanded', 'true');
+        return;
+      }
       toggle.setAttribute('aria-expanded', String(!collapsed));
     });
     toggle.dataset.toggleListener = 'true';
@@ -1243,6 +1375,8 @@ function bindEvents() {
   dom.medForm?.frequency?.addEventListener("change", syncTimesRequirement);
   dom.medForm?.times?.addEventListener("blur", syncDosePlanToTimes);
   dom.medForm?.pillsPerDose?.addEventListener("change", syncDosePlanToPillsPerDose);
+  dom.medForm?.addEventListener("input", markMedicationFormDirty);
+  dom.medForm?.addEventListener("change", markMedicationFormDirty);
   dom.medForm?.addEventListener("reset", () => {
     window.setTimeout(syncTimesRequirement, 0);
   });
@@ -1258,6 +1392,10 @@ function bindEvents() {
   });
 
   dom.addProfileBtn.addEventListener("click", () => {
+    if (medicationFormHasPendingChanges()) {
+      medicationFormBlockMessage();
+      return;
+    }
     if (state.profiles.length >= 2) {
       dom.safetyMessage.textContent = "Multi-user mode supports up to two users in this version.";
       return;
@@ -1508,10 +1646,7 @@ function bindEvents() {
   window.__checkStorageWarning = checkStorageWarning;
 
   dom.medCancelEditBtn?.addEventListener("click", () => {
-    dom.medForm.reset();
-    resetMedicationEditMode();
-    dom.safetyMessage.textContent = "Edit cancelled.";
-    updateMedicationSubmitState();
+    abandonMedicationChanges();
   });
 
   dom.procedureForm.addEventListener("submit", (event) => {
@@ -1587,6 +1722,15 @@ function bindEvents() {
   });
   dom.emergencyBtn.addEventListener("click", () => dom.emergencyDialog.showModal());
   dom.closeEmergencyBtn.addEventListener("click", () => dom.emergencyDialog.close());
+
+  window.addEventListener("beforeunload", (event) => {
+    if (!medicationFormHasPendingChanges()) {
+      return;
+    }
+
+    event.preventDefault();
+    event.returnValue = "";
+  });
 
   dom.shareCaregiverBtn.addEventListener("click", async () => {
     const message = caregiverStatusMessage();
@@ -1735,55 +1879,69 @@ function shouldRegisterServiceWorker() {
   return stateApi.shouldRegisterServiceWorker(window.location.search, FORCE_RELOAD_MARKER);
 }
 
-if ("serviceWorker" in navigator) {
-  let refreshTriggered = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (refreshTriggered) {
-      return;
-    }
-    refreshTriggered = true;
-    window.location.reload();
-  });
+window.__medicationFormTestApi = {
+  medicationFormHasPendingChanges,
+  setMedicationFormDirty,
+  abandonMedicationChanges,
+  requestCloseAllWindows,
+  switchUser,
+  getActiveProfileId: () => state.activeProfileId,
+  setEditingMedicationId: (id) => {
+    editingMedicationId = id;
+  }
+};
 
-  window.addEventListener("load", () => {
-    if (!shouldRegisterServiceWorker()) {
-      return;
-    }
-    navigator.serviceWorker.register(`sw.js?v=${APP_BUILD}`).then((registration) => {
-      registration.update();
-      registration.addEventListener("updatefound", () => {
-        const worker = registration.installing;
-        if (!worker) {
-          return;
-        }
-        worker.addEventListener("statechange", () => {
-          if (worker.state === "installed" && navigator.serviceWorker.controller) {
-            worker.postMessage({ type: "SKIP_WAITING" });
-            dom.safetyMessage.textContent = "Updating app to latest version...";
-          }
-        });
-      });
-    }).catch(() => {
-      // If registration fails, the app still works as a normal website.
+if (!window.__skipAppBootstrap) {
+  if ("serviceWorker" in navigator) {
+    let refreshTriggered = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshTriggered) {
+        return;
+      }
+      refreshTriggered = true;
+      window.location.reload();
     });
+
+    window.addEventListener("load", () => {
+      if (!shouldRegisterServiceWorker()) {
+        return;
+      }
+      navigator.serviceWorker.register(`sw.js?v=${APP_BUILD}`).then((registration) => {
+        registration.update();
+        registration.addEventListener("updatefound", () => {
+          const worker = registration.installing;
+          if (!worker) {
+            return;
+          }
+          worker.addEventListener("statechange", () => {
+            if (worker.state === "installed" && navigator.serviceWorker.controller) {
+              worker.postMessage({ type: "SKIP_WAITING" });
+              dom.safetyMessage.textContent = "Updating app to latest version...";
+            }
+          });
+        });
+      }).catch(() => {
+        // If registration fails, the app still works as a normal website.
+      });
+    });
+  }
+
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+
+  applyForceRefreshFlow().then((reloading) => {
+    if (reloading) {
+      return;
+    }
+    setupCollapsibleCards();
+    bindCardToggleDelegation();
+    attachPerToggleListeners();
+    bindEvents();
+    resetProcedureEditMode();
+    renderAll();
+    if (ENABLE_POPUP_REMINDERS) {
+      window.setInterval(checkDueAlarms, 30000);
+    }
   });
 }
-
-if ("Notification" in window && Notification.permission === "default") {
-  Notification.requestPermission();
-}
-
-applyForceRefreshFlow().then((reloading) => {
-  if (reloading) {
-    return;
-  }
-  setupCollapsibleCards();
-  bindCardToggleDelegation();
-  attachPerToggleListeners();
-  bindEvents();
-  resetProcedureEditMode();
-  renderAll();
-  if (ENABLE_POPUP_REMINDERS) {
-    window.setInterval(checkDueAlarms, 30000);
-  }
-});

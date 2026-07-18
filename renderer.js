@@ -190,6 +190,9 @@
         doseUnit,
         refillFlag,
         friendlyForm,
+        beginMedicationFormSync,
+        endMedicationFormSync,
+        clearMedicationFormDirty,
         setEditingMedicationId,
         serializeDosePlan,
         toDateKey,
@@ -239,31 +242,43 @@
         node.querySelector(".med-notes").textContent = med.notes || "No notes";
 
         node.querySelector(".edit-btn").addEventListener("click", () => {
-          setEditingMedicationId(med.id);
-          dom.medForm.name.value = med.name || "";
-          dom.medForm.strength.value = med.strength || "";
-          dom.medForm.purpose.value = med.purpose || "";
-          dom.medForm.stock.value = Number(med.stock || 0);
-          dom.medForm.pillsPerDose.value = Number(med.pillsPerDose || 1);
-          dom.medForm.dosePlan.value = serializeDosePlan(med);
-          dom.medForm.repeats.value = repeatsCount(med);
-          dom.medForm.startDate.value = med.startDate || toDateKey(new Date());
-          dom.medForm.times.value = Array.isArray(med.times) ? med.times.join(", ") : "";
-          dom.medForm.foodRule.value = med.foodRule || "none";
-          dom.medForm.frequency.value = med.frequency || "daily";
-          dom.medForm.frequency.dispatchEvent(new Event("change", { bubbles: true }));
-          dom.medForm.weeklyDays.value = Array.isArray(med.weeklyDays) ? med.weeklyDays.join(",") : "";
-          dom.medForm.barcode.value = med.barcode || "";
-          dom.medForm.notes.value = med.notes || "";
-          dom.medForm.form.value = med.form || "tablet";
-
-          // Set photo preview and remove flag
+          if (typeof beginMedicationFormSync === "function") {
+            beginMedicationFormSync();
+          }
           try {
-            const preview = document.getElementById('photoPreview');
-            if (preview) preview.src = med.photoDataUrl || 'icons/icon-192.svg';
-            const removeCb = dom.medForm.querySelector('#removePhoto');
-            if (removeCb) removeCb.checked = false;
-          } catch (e) {}
+            setEditingMedicationId(med.id);
+            dom.medForm.name.value = med.name || "";
+            dom.medForm.strength.value = med.strength || "";
+            dom.medForm.purpose.value = med.purpose || "";
+            dom.medForm.stock.value = Number(med.stock || 0);
+            dom.medForm.pillsPerDose.value = Number(med.pillsPerDose || 1);
+            dom.medForm.dosePlan.value = serializeDosePlan(med);
+            dom.medForm.repeats.value = repeatsCount(med);
+            dom.medForm.startDate.value = med.startDate || toDateKey(new Date());
+            dom.medForm.times.value = Array.isArray(med.times) ? med.times.join(", ") : "";
+            dom.medForm.foodRule.value = med.foodRule || "none";
+            dom.medForm.frequency.value = med.frequency || "daily";
+            dom.medForm.frequency.dispatchEvent(new Event("change", { bubbles: true }));
+            dom.medForm.weeklyDays.value = Array.isArray(med.weeklyDays) ? med.weeklyDays.join(",") : "";
+            dom.medForm.barcode.value = med.barcode || "";
+            dom.medForm.notes.value = med.notes || "";
+            dom.medForm.form.value = med.form || "tablet";
+
+            // Set photo preview and remove flag
+            try {
+              const preview = document.getElementById('photoPreview');
+              if (preview) preview.src = med.photoDataUrl || 'icons/icon-192.svg';
+              const removeCb = dom.medForm.querySelector('#removePhoto');
+              if (removeCb) removeCb.checked = false;
+            } catch (e) {}
+          } finally {
+            if (typeof endMedicationFormSync === "function") {
+              endMedicationFormSync();
+            }
+            if (typeof clearMedicationFormDirty === "function") {
+              clearMedicationFormDirty();
+            }
+          }
 
           if (dom.medSubmitBtn) {
             dom.medSubmitBtn.textContent = "Save Changes";
