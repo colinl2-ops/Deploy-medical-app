@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260718-183820";
-const APP_RELEASE_LABEL = "Flag 22";
+const APP_BUILD = "20260718-185112";
+const APP_RELEASE_LABEL = "Flag 23";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -415,12 +415,27 @@ function catchUpOverdueDoses() {
   });
 
   if (caughtUpCount === 0) {
+    updateCatchUpButtonState();
     dom.safetyMessage.textContent = "No overdue pending doses to catch up.";
     return;
   }
 
   renderAll();
   dom.safetyMessage.textContent = `Caught up ${caughtUpCount} overdue dose(s).`;
+}
+
+function updateCatchUpButtonState() {
+  if (!dom.catchUpBtn) {
+    return;
+  }
+
+  const overdueCount = overduePendingDoses().length;
+  dom.catchUpBtn.disabled = overdueCount === 0;
+  dom.catchUpBtn.textContent = overdueCount === 0 ? "Caught Up" : "Catch Up Overdue";
+  dom.catchUpBtn.setAttribute(
+    "aria-label",
+    overdueCount === 0 ? "All overdue doses are caught up" : `Catch up ${overdueCount} overdue dose${overdueCount === 1 ? "" : "s"}`
+  );
 }
 
 function isMorningDose(dose) {
@@ -629,6 +644,7 @@ function renderAdherence(todayDoses) {
     state,
     overduePendingDoses
   });
+  updateCatchUpButtonState();
 }
 
 function maybeNotifyRefill(meds) {
