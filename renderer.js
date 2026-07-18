@@ -1,5 +1,26 @@
 (function (global) {
   function createRendererApi() {
+    const WEEKDAY_SHORT_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    function nextScheduledDoseWeekday(med, includesDay) {
+      if (typeof includesDay !== "function") {
+        return "";
+      }
+
+      const now = new Date();
+      const baseDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+      for (let offset = 0; offset < 30; offset += 1) {
+        const candidate = new Date(baseDate);
+        candidate.setUTCDate(candidate.getUTCDate() + offset);
+        if (includesDay(med, candidate)) {
+          return WEEKDAY_SHORT_NAMES[candidate.getUTCDay()] || "";
+        }
+      }
+
+      return "";
+    }
+
     function renderProcedures(procedures, context) {
       const {
         dom,
@@ -161,6 +182,7 @@
         dom,
         daysLeft,
         formatDosePlan,
+        includesDay,
         friendlyFoodRule,
         friendlyFrequency,
         friendlyWeeklyDays,
@@ -205,15 +227,16 @@
         const freqLabel = med.frequency === "weekly" && Array.isArray(med.weeklyDays) && med.weeklyDays.length > 0
           ? `Weekly — ${friendlyWeeklyDays(med.weeklyDays)}`
           : friendlyFrequency(med.frequency);
-        node.querySelector(".med-schedule").textContent = `${friendlyFoodRule(med.foodRule)} | ${freqLabel} | Repeats: ${repeatsCount(med)}`;
+        const nextDoseWeekday = med.frequency === "weekly" || med.frequency === "everyOtherDay"
+          ? nextScheduledDoseWeekday(med, includesDay)
+          : "";
+        const nextDoseText = nextDoseWeekday ? ` | Next: ${nextDoseWeekday}` : "";
+        node.querySelector(".med-schedule").textContent = `${friendlyFoodRule(med.foodRule)} | ${freqLabel}${nextDoseText} | Repeats: ${repeatsCount(med)}`;
 
         const dl = daysLeft(med);
         const daysText = Number.isFinite(dl) ? `${dl.toFixed(1)} day(s) left` : `Stock: ${med.stock} ${doseUnit(med)}`;
         node.querySelector(".med-days").textContent = `${daysText}. ${refillFlag(med)}.`;
         node.querySelector(".med-notes").textContent = med.notes || "No notes";
-        node.querySelector(".food-chip").textContent = friendlyFoodRule(med.foodRule);
-        node.querySelector(".freq-chip").textContent = friendlyFrequency(med.frequency);
-        node.querySelector(".form-chip").textContent = friendlyForm(med.form || "tablet");
 
         node.querySelector(".edit-btn").addEventListener("click", () => {
           setEditingMedicationId(med.id);

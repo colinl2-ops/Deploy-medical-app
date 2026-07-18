@@ -1,14 +1,12 @@
 const STORAGE_KEY = "med-helper-v3";
 const BACKUP_STORAGE_KEY = "med-helper-v3-backup";
-const MEDS_BACKUP_KEY = "med-helper-meds-v1";
-const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
+const LEGACY_MEDS_BACKUP_KEY = "med-helper-meds-v1";
+const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260714-210950";
-const APP_RELEASE_LABEL = "Flag 19";
-const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
-const CLOSE_ALL_CHANNEL = "med-helper-close-all";
+const APP_BUILD = "20260718-142203";
+const APP_RELEASE_LABEL = "Flag 21";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -89,8 +87,8 @@ const stateApi = createStateApi({
   keys: {
     STORAGE_KEY,
     BACKUP_STORAGE_KEY,
-    MEDS_BACKUP_KEY,
-    RECOVERY_SNAPSHOT_KEY,
+    LEGACY_MEDS_BACKUP_KEY,
+    LEGACY_RECOVERY_SNAPSHOT_KEY,
     LEGACY_MED_LIST_KEY
   },
   helpers: {
@@ -102,7 +100,6 @@ const stateApi = createStateApi({
   }
 });
 
-const uiApi = createUiApi();
 const formsApi = createFormsApi();
 const rendererApi = createRendererApi();
 
@@ -117,12 +114,6 @@ let muteAlarmsUntilKey = null;
 let alarmCooldownUntil = 0;
 let editingMedicationId = null;
 let editingProcedureId = null;
-let closeAllChannel = null;
-let closeAllClickBound = false;
-
-// Removed non-functional attempt to programmatically close browser windows.
-// Modern browsers only allow `window.close()` for script-opened windows,
-// so close-all signals now trigger a UI-only collapse of sections instead.
 
 function requestCloseAllWindows() {
   const cards = Array.from(document.querySelectorAll("main section.card"));
@@ -147,43 +138,6 @@ function requestCloseAllWindows() {
       ? `Closed ${closedCount} open section${closedCount === 1 ? "" : "s"}.`
       : "All sections are already closed.";
   }
-}
-
-function bindCloseAllButton() {
-  if (closeAllClickBound) {
-    return;
-  }
-  closeAllClickBound = true;
-
-  // Delegate so the handler still works if layout changes move/recreate the button.
-  document.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) {
-      return;
-    }
-    const closeBtn = target.closest("#closeAllBtn");
-    if (!closeBtn) {
-      return;
-    }
-    requestCloseAllWindows();
-  });
-}
-
-function setupCloseAllListeners() {
-  if (window.BroadcastChannel) {
-    closeAllChannel = new BroadcastChannel(CLOSE_ALL_CHANNEL);
-    closeAllChannel.onmessage = (event) => {
-      if (event?.data?.type === "close-all") {
-        requestCloseAllWindows();
-      }
-    };
-  }
-
-  window.addEventListener("storage", (event) => {
-    if (event.key === CLOSE_ALL_SIGNAL_KEY && event.newValue) {
-      requestCloseAllWindows();
-    }
-  });
 }
 
 function makeId() {
@@ -521,6 +475,7 @@ function renderMeds(meds) {
     dom,
     daysLeft,
     formatDosePlan,
+    includesDay,
     friendlyFoodRule,
     friendlyFrequency,
     friendlyWeeklyDays,
@@ -1022,7 +977,44 @@ function switchUser() {
 }
 
 function setupCollapsibleCards() {
-  uiApi.setupCollapsibleCards();
+  const cards = Array.from(document.querySelectorAll("main section.card"));
+  cards.forEach((card, index) => {
+    if (card.dataset.collapsibleReady === "true") {
+      return;
+    }
+
+    const heading = card.querySelector("h2");
+    if (!heading) {
+      return;
+    }
+
+    const panelId = card.id ? `${card.id}-content` : `card-content-${index + 1}`;
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "card-toggle";
+    toggleBtn.setAttribute("aria-expanded", "false");
+    toggleBtn.setAttribute("aria-controls", panelId);
+    toggleBtn.innerHTML = `<span class="card-toggle-title">${heading.textContent || "Section"}</span><span class="card-toggle-icon" aria-hidden="true">▾</span>`;
+    heading.replaceWith(toggleBtn);
+
+    card.classList.add("is-collapsed");
+
+    const content = document.createElement("div");
+    content.className = "card-content";
+    content.id = panelId;
+
+    while (toggleBtn.nextSibling) {
+      content.appendChild(toggleBtn.nextSibling);
+    }
+    card.appendChild(content);
+
+    toggleBtn.addEventListener("click", () => {
+      const collapsed = card.classList.toggle("is-collapsed");
+      toggleBtn.setAttribute("aria-expanded", String(!collapsed));
+    });
+
+    card.dataset.collapsibleReady = "true";
+  });
 }
 
 // Ensure collapse toggles work even if per-button listeners are lost
@@ -1692,8 +1684,6 @@ applyForceRefreshFlow().then((reloading) => {
   if (reloading) {
     return;
   }
-  setupCloseAllListeners();
-  bindCloseAllButton();
   setupCollapsibleCards();
   bindCardToggleDelegation();
   attachPerToggleListeners();
