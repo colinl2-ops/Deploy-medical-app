@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
-    <link rel="stylesheet" href="styles.css?v=20260718-142203" />
+    <link rel="stylesheet" href="styles.css?v=20260718-183820" />
     <title>Medication Helper</title>
   </head>
   <body>
@@ -27,6 +27,14 @@
 
     <div class="fab-actions" aria-label="Quick actions">
       <button id="closeAllBtn" class="close-fab" type="button">Collapse All</button>
+      <button id="searchMedBtn" class="search-fab" type="button">Search</button>
+      <form id="searchMedForm" class="quick-search hidden" role="search" aria-label="Search medication">
+        <label class="sr-only" for="searchMedInput">Medication name</label>
+        <input id="searchMedInput" name="searchMedInput" type="search" autocomplete="off" placeholder="Medication name" />
+        <button class="primary-btn" type="submit">Find</button>
+        <button id="cancelSearchMedBtn" class="secondary-btn" type="button">Cancel</button>
+        <span id="searchMedStatus" class="quick-search-status" aria-live="polite"></span>
+      </form>
       <button id="emergencyBtn" class="emergency-fab" type="button">Emergency</button>
     </div>
 
@@ -375,9 +383,9 @@
       </article>
     </template>
 
-    <script src="state.js?v=20260718-142203" defer></script>
-    <script src="forms.js?v=20260718-142203" defer></script>
-    <script src="renderer.js?v=20260718-142203" defer></script>
-    <script src="app.js?v=20260718-142203" defer></script>
+    <script src="state.js?v=20260718-183820" defer></script>
+    <script src="forms.js?v=20260718-183820" defer></script>
+    <script src="renderer.js?v=20260718-183820" defer></script>
+    <script src="app.js?v=20260718-183820" defer></script>
   </body>
 </html>

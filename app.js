@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260718-142203";
-const APP_RELEASE_LABEL = "Flag 21";
+const APP_BUILD = "20260718-183820";
+const APP_RELEASE_LABEL = "Flag 22";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -40,6 +40,11 @@ const dom = {
   safetyMessage: byId("safetyMessage"),
   procedureMessage: byId("procedureMessage"),
   closeAllBtn: byId("closeAllBtn"),
+  searchMedBtn: byId("searchMedBtn"),
+  searchMedForm: byId("searchMedForm"),
+  searchMedInput: byId("searchMedInput"),
+  cancelSearchMedBtn: byId("cancelSearchMedBtn"),
+  searchMedStatus: byId("searchMedStatus"),
   emergencyBtn: byId("emergencyBtn"),
   emergencyDialog: byId("emergencyDialog"),
   medicalCardText: byId("medicalCardText"),
@@ -137,6 +142,66 @@ function requestCloseAllWindows() {
     dom.safetyMessage.textContent = closedCount > 0
       ? `Closed ${closedCount} open section${closedCount === 1 ? "" : "s"}.`
       : "All sections are already closed.";
+  }
+}
+
+function normalizedSearchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function medicationSearchMatches(query) {
+  const normalizedQuery = normalizedSearchText(query);
+  if (!normalizedQuery) return [];
+
+  const meds = medsForActiveProfile();
+  const exactMatches = meds.filter((med) => normalizedSearchText(med.name) === normalizedQuery);
+  if (exactMatches.length === 1) return exactMatches;
+
+  return meds.filter((med) => normalizedSearchText(med.name).includes(normalizedQuery));
+}
+
+function closeMedicationSearch(message = "") {
+  dom.searchMedForm?.classList.add("hidden");
+  if (dom.searchMedInput) {
+    dom.searchMedInput.value = "";
+  }
+  if (dom.searchMedStatus) {
+    dom.searchMedStatus.textContent = "";
+  }
+  if (message && dom.safetyMessage) {
+    dom.safetyMessage.textContent = message;
+  }
+}
+
+function openMedicationSearch() {
+  dom.searchMedForm?.classList.remove("hidden");
+  if (dom.searchMedStatus) {
+    dom.searchMedStatus.textContent = "Type a medication name.";
+  }
+  dom.searchMedInput?.focus();
+}
+
+function resolveMedicationSearch() {
+  const query = dom.searchMedInput?.value || "";
+  const normalizedQuery = normalizedSearchText(query);
+  if (!normalizedQuery) {
+    if (dom.searchMedStatus) {
+      dom.searchMedStatus.textContent = "Type a medication name.";
+    }
+    return;
+  }
+
+  const matches = medicationSearchMatches(query);
+  if (matches.length === 1) {
+    rendererApi.jumpToMedication(matches[0].id);
+    closeMedicationSearch(`Showing ${matches[0].name}.`);
+    return;
+  }
+
+  if (dom.searchMedStatus) {
+    dom.searchMedStatus.textContent = matches.length === 0
+      ? "No medication found."
+      : `${matches.length} matches. Keep typing.`;
   }
 }
 
@@ -1492,6 +1557,18 @@ function bindEvents() {
   });
 
   dom.closeAllBtn?.addEventListener("click", requestCloseAllWindows);
+  dom.searchMedBtn?.addEventListener("click", openMedicationSearch);
+  dom.searchMedInput?.addEventListener("input", resolveMedicationSearch);
+  dom.searchMedForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    resolveMedicationSearch();
+  });
+  dom.cancelSearchMedBtn?.addEventListener("click", () => closeMedicationSearch("Search cancelled."));
+  dom.searchMedInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeMedicationSearch("Search cancelled.");
+    }
+  });
   dom.emergencyBtn.addEventListener("click", () => dom.emergencyDialog.showModal());
   dom.closeEmergencyBtn.addEventListener("click", () => dom.emergencyDialog.close());
 
