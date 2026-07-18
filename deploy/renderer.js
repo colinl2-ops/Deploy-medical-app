@@ -1,5 +1,26 @@
 (function (global) {
   function createRendererApi() {
+    const WEEKDAY_SHORT_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    function nextScheduledDoseWeekday(med, includesDay) {
+      if (typeof includesDay !== "function") {
+        return "";
+      }
+
+      const now = new Date();
+      const baseDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+      for (let offset = 0; offset < 30; offset += 1) {
+        const candidate = new Date(baseDate);
+        candidate.setUTCDate(candidate.getUTCDate() + offset);
+        if (includesDay(med, candidate)) {
+          return WEEKDAY_SHORT_NAMES[candidate.getUTCDay()] || "";
+        }
+      }
+
+      return "";
+    }
+
     function renderProcedures(procedures, context) {
       const {
         dom,
@@ -122,10 +143,38 @@
 
       ordered.forEach((item) => {
         const li = document.createElement("li");
+        li.className = "order-priority-item";
         const leftText = Number.isFinite(item.left) ? `${item.left.toFixed(1)} day(s) left` : "No schedule";
-        li.textContent = `${item.med.name} ${item.med.strength || ""} - ${leftText} - Repeats: ${repeatsCount(item.med)}`.trim();
+        const label = document.createElement("span");
+        label.textContent = `${item.med.name} ${item.med.strength || ""} - ${leftText} - Repeats: ${repeatsCount(item.med)}`.trim();
+
+        const goBtn = document.createElement("button");
+        goBtn.type = "button";
+        goBtn.className = "go-to-med-btn";
+        goBtn.textContent = "View";
+        goBtn.setAttribute("aria-label", `Go to ${item.med.name}`);
+        goBtn.addEventListener("click", () => jumpToMedication(item.med.id));
+
+        li.append(label, goBtn);
         dom.orderList.appendChild(li);
       });
+    }
+
+    function jumpToMedication(medId) {
+      const card = document.getElementById(`med-card-${medId}`);
+      if (!card) return;
+
+      const sectionCard = card.closest("section.card");
+      const toggle = sectionCard?.querySelector(".card-toggle");
+      if (sectionCard && sectionCard.classList.contains("is-collapsed") && toggle) {
+        toggle.click();
+      }
+
+      setTimeout(() => {
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        card.classList.add("highlighted");
+        setTimeout(() => card.classList.remove("highlighted"), 1500);
+      }, 50);
     }
 
     function renderMeds(meds, context) {
@@ -133,6 +182,7 @@
         dom,
         daysLeft,
         formatDosePlan,
+        includesDay,
         friendlyFoodRule,
         friendlyFrequency,
         friendlyWeeklyDays,
@@ -158,7 +208,12 @@
 
       sortedMeds.forEach((med) => {
         const node = dom.medTemplate.content.cloneNode(true);
-        node.querySelector(".med-photo").src = med.photoDataUrl || "icons/icon-192.svg";
+        const cardEl = node.querySelector(".med-card");
+        cardEl.id = `med-card-${med.id}`;
+        cardEl.dataset.medId = med.id;
+        const photoImg = node.querySelector(".med-photo");
+        photoImg.src = med.photoDataUrl || "icons/icon-192.svg";
+        photoImg.dataset.medId = med.id;
         node.querySelector(".med-name").textContent = `${med.name} ${med.strength}`;
         node.querySelector(".med-purpose").textContent = `For: ${med.purpose}`;
 
@@ -172,15 +227,16 @@
         const freqLabel = med.frequency === "weekly" && Array.isArray(med.weeklyDays) && med.weeklyDays.length > 0
           ? `Weekly — ${friendlyWeeklyDays(med.weeklyDays)}`
           : friendlyFrequency(med.frequency);
-        node.querySelector(".med-schedule").textContent = `${friendlyFoodRule(med.foodRule)} | ${freqLabel} | Repeats: ${repeatsCount(med)}`;
+        const nextDoseWeekday = med.frequency === "weekly" || med.frequency === "everyOtherDay"
+          ? nextScheduledDoseWeekday(med, includesDay)
+          : "";
+        const nextDoseText = nextDoseWeekday ? ` | Next: ${nextDoseWeekday}` : "";
+        node.querySelector(".med-schedule").textContent = `${friendlyFoodRule(med.foodRule)} | ${freqLabel}${nextDoseText} | Repeats: ${repeatsCount(med)}`;
 
         const dl = daysLeft(med);
         const daysText = Number.isFinite(dl) ? `${dl.toFixed(1)} day(s) left` : `Stock: ${med.stock} ${doseUnit(med)}`;
         node.querySelector(".med-days").textContent = `${daysText}. ${refillFlag(med)}.`;
         node.querySelector(".med-notes").textContent = med.notes || "No notes";
-        node.querySelector(".food-chip").textContent = friendlyFoodRule(med.foodRule);
-        node.querySelector(".freq-chip").textContent = friendlyFrequency(med.frequency);
-        node.querySelector(".form-chip").textContent = friendlyForm(med.form || "tablet");
 
         node.querySelector(".edit-btn").addEventListener("click", () => {
           setEditingMedicationId(med.id);
@@ -200,6 +256,14 @@
           dom.medForm.barcode.value = med.barcode || "";
           dom.medForm.notes.value = med.notes || "";
           dom.medForm.form.value = med.form || "tablet";
+
+          // Set photo preview and remove flag
+          try {
+            const preview = document.getElementById('photoPreview');
+            if (preview) preview.src = med.photoDataUrl || 'icons/icon-192.svg';
+            const removeCb = dom.medForm.querySelector('#removePhoto');
+            if (removeCb) removeCb.checked = false;
+          } catch (e) {}
 
           if (dom.medSubmitBtn) {
             dom.medSubmitBtn.textContent = "Save Changes";
@@ -409,6 +473,7 @@
       renderProcedures,
       renderRunningOut,
       renderOrderPriority,
+      jumpToMedication,
       renderMeds,
       renderTimeline,
       renderAdherence,

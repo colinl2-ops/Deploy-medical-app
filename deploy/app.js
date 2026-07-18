@@ -1,14 +1,12 @@
 const STORAGE_KEY = "med-helper-v3";
 const BACKUP_STORAGE_KEY = "med-helper-v3-backup";
-const MEDS_BACKUP_KEY = "med-helper-meds-v1";
-const RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
+const LEGACY_MEDS_BACKUP_KEY = "med-helper-meds-v1";
+const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260712-110703";
-const APP_RELEASE_LABEL = "Flag4";
-const CLOSE_ALL_SIGNAL_KEY = "med-helper-close-all-signal";
-const CLOSE_ALL_CHANNEL = "med-helper-close-all";
+const APP_BUILD = "20260718-142203";
+const APP_RELEASE_LABEL = "Flag 21";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -89,8 +87,8 @@ const stateApi = createStateApi({
   keys: {
     STORAGE_KEY,
     BACKUP_STORAGE_KEY,
-    MEDS_BACKUP_KEY,
-    RECOVERY_SNAPSHOT_KEY,
+    LEGACY_MEDS_BACKUP_KEY,
+    LEGACY_RECOVERY_SNAPSHOT_KEY,
     LEGACY_MED_LIST_KEY
   },
   helpers: {
@@ -102,7 +100,6 @@ const stateApi = createStateApi({
   }
 });
 
-const uiApi = createUiApi();
 const formsApi = createFormsApi();
 const rendererApi = createRendererApi();
 
@@ -117,12 +114,6 @@ let muteAlarmsUntilKey = null;
 let alarmCooldownUntil = 0;
 let editingMedicationId = null;
 let editingProcedureId = null;
-let closeAllChannel = null;
-let closeAllClickBound = false;
-
-// Removed non-functional attempt to programmatically close browser windows.
-// Modern browsers only allow `window.close()` for script-opened windows,
-// so close-all signals now trigger a UI-only collapse of sections instead.
 
 function requestCloseAllWindows() {
   const cards = Array.from(document.querySelectorAll("main section.card"));
@@ -147,43 +138,6 @@ function requestCloseAllWindows() {
       ? `Closed ${closedCount} open section${closedCount === 1 ? "" : "s"}.`
       : "All sections are already closed.";
   }
-}
-
-function bindCloseAllButton() {
-  if (closeAllClickBound) {
-    return;
-  }
-  closeAllClickBound = true;
-
-  // Delegate so the handler still works if layout changes move/recreate the button.
-  document.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) {
-      return;
-    }
-    const closeBtn = target.closest("#closeAllBtn");
-    if (!closeBtn) {
-      return;
-    }
-    requestCloseAllWindows();
-  });
-}
-
-function setupCloseAllListeners() {
-  if (window.BroadcastChannel) {
-    closeAllChannel = new BroadcastChannel(CLOSE_ALL_CHANNEL);
-    closeAllChannel.onmessage = (event) => {
-      if (event?.data?.type === "close-all") {
-        requestCloseAllWindows();
-      }
-    };
-  }
-
-  window.addEventListener("storage", (event) => {
-    if (event.key === CLOSE_ALL_SIGNAL_KEY && event.newValue) {
-      requestCloseAllWindows();
-    }
-  });
 }
 
 function makeId() {
@@ -251,6 +205,10 @@ function toDateKey(date) {
 
 function parseDosePlan(raw) {
   return stateApi.parseDosePlan(raw);
+}
+
+function parseTimes(raw) {
+  return stateApi.parseTimes(raw);
 }
 
 function normalizeDosePlan(value) {
@@ -517,6 +475,7 @@ function renderMeds(meds) {
     dom,
     daysLeft,
     formatDosePlan,
+    includesDay,
     friendlyFoodRule,
     friendlyFrequency,
     friendlyWeeklyDays,
@@ -857,9 +816,40 @@ async function fileToDataUrl(file) {
       resolve("");
       return;
     }
+    // The largest the app ever displays a medication photo is the preview
+    // dialog (max-width 540px). Thumbnails are only 86px. Storing far more
+    // resolution than that just wastes localStorage space, so always resize
+    // down to MAX_DIM and always re-encode as compressed JPEG (never keep
+    // the original file bytes, even if it was already small - an
+    // uncompressed screenshot/PNG can still be large).
+    const MAX_DIM = 640;
+    const JPEG_QUALITY = 0.6;
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
     reader.onerror = () => resolve("");
+    reader.onload = () => {
+      try {
+        const img = new Image();
+        img.onload = () => {
+          const { width, height } = img;
+          const ratio = Math.min(1, MAX_DIM / Math.max(width, height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(width * ratio));
+          canvas.height = Math.max(1, Math.round(height * ratio));
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          try {
+            const compressed = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+            resolve(compressed);
+          } catch (e) {
+            resolve(String(reader.result || ""));
+          }
+        };
+        img.onerror = () => resolve(String(reader.result || ""));
+        img.src = String(reader.result || "");
+      } catch (e) {
+        resolve(String(reader.result || ""));
+      }
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -987,7 +977,75 @@ function switchUser() {
 }
 
 function setupCollapsibleCards() {
-  uiApi.setupCollapsibleCards();
+  const cards = Array.from(document.querySelectorAll("main section.card"));
+  cards.forEach((card, index) => {
+    if (card.dataset.collapsibleReady === "true") {
+      return;
+    }
+
+    const heading = card.querySelector("h2");
+    if (!heading) {
+      return;
+    }
+
+    const panelId = card.id ? `${card.id}-content` : `card-content-${index + 1}`;
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "card-toggle";
+    toggleBtn.setAttribute("aria-expanded", "false");
+    toggleBtn.setAttribute("aria-controls", panelId);
+    toggleBtn.innerHTML = `<span class="card-toggle-title">${heading.textContent || "Section"}</span><span class="card-toggle-icon" aria-hidden="true">▾</span>`;
+    heading.replaceWith(toggleBtn);
+
+    card.classList.add("is-collapsed");
+
+    const content = document.createElement("div");
+    content.className = "card-content";
+    content.id = panelId;
+
+    while (toggleBtn.nextSibling) {
+      content.appendChild(toggleBtn.nextSibling);
+    }
+    card.appendChild(content);
+
+    toggleBtn.addEventListener("click", () => {
+      const collapsed = card.classList.toggle("is-collapsed");
+      toggleBtn.setAttribute("aria-expanded", String(!collapsed));
+    });
+
+    card.dataset.collapsibleReady = "true";
+  });
+}
+
+// Ensure collapse toggles work even if per-button listeners are lost
+let cardToggleDelegationBound = false;
+function bindCardToggleDelegation() {
+  if (cardToggleDelegationBound) return;
+  cardToggleDelegationBound = true;
+  document.addEventListener('click', (ev) => {
+    const tgt = ev.target;
+    if (!(tgt instanceof Element)) return;
+    const toggle = tgt.closest('.card-toggle');
+    if (!toggle) return;
+    const card = toggle.closest('section.card');
+    if (!card) return;
+    const collapsed = card.classList.toggle('is-collapsed');
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+  });
+}
+
+function attachPerToggleListeners() {
+  const toggles = Array.from(document.querySelectorAll('.card-toggle'));
+  toggles.forEach((toggle) => {
+    if (toggle.dataset.toggleListener === 'true') return;
+    toggle.addEventListener('click', () => {
+      const card = toggle.closest('section.card');
+      if (!card) return;
+      const collapsed = card.classList.toggle('is-collapsed');
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+    });
+    toggle.dataset.toggleListener = 'true';
+  });
 }
 
 function openMedicationFormCard() {
@@ -1061,7 +1119,49 @@ function bindEvents() {
     updateMedicationSubmitState();
   }
 
+  function syncDosePlanToTimes() {
+    const form = dom.medForm;
+    if (!form || !form.dosePlan) {
+      return;
+    }
+    const currentTimes = parseTimes(form.times?.value || "");
+    const currentPlan = parseDosePlan(form.dosePlan.value || "");
+    if (Object.keys(currentPlan).length === 0) {
+      return;
+    }
+    Object.keys(currentPlan).forEach((t) => {
+      if (!currentTimes.includes(t)) delete currentPlan[t];
+    });
+    const ppd = Number(form.pillsPerDose?.value || 1);
+    const remaining = Object.values(currentPlan);
+    if (remaining.length === 0 || remaining.every((v) => v === ppd)) {
+      form.dosePlan.value = "";
+    } else {
+      form.dosePlan.value = Object.entries(currentPlan)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([t, q]) => `${t}=${q}`)
+        .join(", ");
+    }
+  }
+
+  function syncDosePlanToPillsPerDose() {
+    const form = dom.medForm;
+    if (!form || !form.dosePlan) {
+      return;
+    }
+    const currentPlan = parseDosePlan(form.dosePlan.value || "");
+    const values = Object.values(currentPlan);
+    if (values.length === 0) {
+      return;
+    }
+    if (values.every((v) => v === values[0])) {
+      form.dosePlan.value = "";
+    }
+  }
+
   dom.medForm?.frequency?.addEventListener("change", syncTimesRequirement);
+  dom.medForm?.times?.addEventListener("blur", syncDosePlanToTimes);
+  dom.medForm?.pillsPerDose?.addEventListener("change", syncDosePlanToPillsPerDose);
   dom.medForm?.addEventListener("reset", () => {
     window.setTimeout(syncTimesRequirement, 0);
   });
@@ -1150,6 +1250,181 @@ function bindEvents() {
     });
     updateMedicationSubmitState();
   });
+
+  // Update photo preview when user selects a file and clear remove flag
+  const photoInput = dom.medForm.querySelector('#photoInput');
+  if (photoInput) {
+    photoInput.addEventListener('change', async (ev) => {
+      try {
+        const file = photoInput.files && photoInput.files[0];
+        const preview = document.getElementById('photoPreview');
+        if (file) {
+          const data = await fileToDataUrl(file);
+          if (preview) preview.src = data || 'icons/icon-192.svg';
+          const removeCb = dom.medForm.querySelector('#removePhoto');
+          if (removeCb) removeCb.checked = false;
+        } else if (preview) {
+          preview.src = 'icons/icon-192.svg';
+        }
+      } catch (e) {}
+    });
+  }
+
+  // Photo preview dialog handlers
+  const photoDialog = byId('photoPreviewDialog');
+  const photoDialogImage = byId('photoDialogImage');
+  const photoReplaceBtn = byId('photoReplaceBtn');
+  const photoRemoveBtn = byId('photoRemoveBtn');
+  const photoCloseBtn = byId('photoCloseBtn');
+
+  // Track which med the dialog was opened for (null = form preview, string = med card)
+  let photoDialogMedId = null;
+
+  // Open dialog when clicking preview images
+  document.addEventListener('click', (ev) => {
+    const tgt = ev.target;
+    if (!(tgt instanceof Element)) return;
+    if (tgt.id === 'photoPreview' || tgt.classList.contains('med-photo')) {
+      const src = tgt.getAttribute('src') || 'icons/icon-192.svg';
+      if (photoDialogImage) photoDialogImage.src = src;
+      photoDialogMedId = tgt.dataset.medId || null;
+      if (photoDialog && typeof photoDialog.showModal === 'function') photoDialog.showModal();
+    }
+  });
+
+  if (photoReplaceBtn) {
+    photoReplaceBtn.addEventListener('click', () => {
+      if (photoDialog && typeof photoDialog.close === 'function') photoDialog.close();
+      if (photoDialogMedId) {
+        // Clicked from a med card — enter edit mode for that med, then open file picker
+        const editBtn = document.querySelector(`.med-photo[data-med-id="${photoDialogMedId}"]`)
+          ?.closest('.med-card')
+          ?.querySelector('.edit-btn');
+        if (editBtn) {
+          editBtn.click();
+          // Wait for the form to scroll into view, then open file picker
+          setTimeout(() => {
+            const input = dom.medForm.querySelector('#photoInput');
+            if (input) input.click();
+          }, 350);
+        }
+      } else {
+        // Clicked from the form preview — just open file picker directly
+        const input = dom.medForm.querySelector('#photoInput');
+        if (input) input.click();
+      }
+      photoDialogMedId = null;
+    });
+  }
+
+  if (photoRemoveBtn) {
+    photoRemoveBtn.addEventListener('click', () => {
+      if (photoDialog && typeof photoDialog.close === 'function') photoDialog.close();
+      if (photoDialogMedId) {
+        // Clicked from a med card — directly remove photo from state and save
+        const med = state.medications.find((m) => m.id === photoDialogMedId);
+        if (med) {
+          const prevPhoto = med.photoDataUrl || "";
+          med.photoDataUrl = "";
+          saveState();
+          renderAll();
+          if (prevPhoto) {
+            try { window.__photoUndo?.showUndoForRemoval(med.id, prevPhoto); } catch (e) {}
+          }
+        }
+      } else {
+        // Clicked from the form preview — check the remove checkbox
+        const removeCb = dom.medForm.querySelector('#removePhoto');
+        if (removeCb) removeCb.checked = true;
+        const preview = byId('photoPreview');
+        if (preview) preview.src = 'icons/icon-192.svg';
+      }
+      photoDialogMedId = null;
+    });
+  }
+
+  if (photoCloseBtn) {
+    photoCloseBtn.addEventListener('click', () => {
+      if (photoDialog && typeof photoDialog.close === 'function') photoDialog.close();
+      photoDialogMedId = null;
+    });
+  }
+
+  // Undo toast for photo removal
+  const undoToast = byId('undoToast');
+  const undoToastBtn = byId('undoToastBtn');
+  const undoToastMessage = byId('undoToastMessage');
+  let undoTimeoutId = null;
+  const photoUndoStore = new Map();
+  if (undoToastBtn) {
+    undoToastBtn.addEventListener('click', () => {
+      // restore last removed photo if available
+      const lastKey = Array.from(photoUndoStore.keys()).pop();
+      if (!lastKey) return;
+      const data = photoUndoStore.get(lastKey);
+      if (!data) return;
+      const med = state.medications.find((m) => m.id === lastKey);
+      if (med) {
+        med.photoDataUrl = data;
+        saveState();
+        renderAll();
+      }
+      photoUndoStore.delete(lastKey);
+      if (undoToast) undoToast.classList.add('hidden');
+      if (undoTimeoutId) { clearTimeout(undoTimeoutId); undoTimeoutId = null; }
+    });
+  }
+
+  // Helper to show undo toast when a photo is removed
+  function showUndoForRemoval(medId, previousData) {
+    if (!medId) return;
+    photoUndoStore.set(medId, previousData || "");
+    if (undoToastMessage) undoToastMessage.textContent = 'Photo removed';
+    if (undoToast) undoToast.classList.remove('hidden');
+    if (undoTimeoutId) clearTimeout(undoTimeoutId);
+    undoTimeoutId = setTimeout(() => {
+      photoUndoStore.delete(medId);
+      if (undoToast) undoToast.classList.add('hidden');
+      undoTimeoutId = null;
+    }, 5000);
+  }
+
+  // Expose for other modules to call when they remove a photo
+  window.__photoUndo = { showUndoForRemoval };
+
+  // Storage usage check: warn when approaching localStorage quota
+  function estimateLocalStorageBytes() {
+    try {
+      let total = 0;
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        const val = localStorage.getItem(key) || "";
+        total += key.length + val.length;
+      }
+      return total;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function checkStorageWarning() {
+    const bytes = estimateLocalStorageBytes();
+    // warn at ~4.5MB (approx 4.5 * 1024 * 1024)
+    const threshold = 4.5 * 1024 * 1024;
+    const warnEl = byId('storageWarning');
+    if (bytes > threshold) {
+      if (warnEl) {
+        warnEl.textContent = 'Storage usage is high — photos may fail to save. Consider removing large images.';
+        warnEl.classList.remove('hidden');
+      }
+    } else if (warnEl) {
+      warnEl.classList.add('hidden');
+    }
+  }
+
+  // run on startup and when saving
+  try { checkStorageWarning(); } catch (e) {}
+  window.__checkStorageWarning = checkStorageWarning;
 
   dom.medCancelEditBtn?.addEventListener("click", () => {
     dom.medForm.reset();
@@ -1409,9 +1684,9 @@ applyForceRefreshFlow().then((reloading) => {
   if (reloading) {
     return;
   }
-  setupCloseAllListeners();
-  bindCloseAllButton();
   setupCollapsibleCards();
+  bindCardToggleDelegation();
+  attachPerToggleListeners();
   bindEvents();
   resetProcedureEditMode();
   renderAll();

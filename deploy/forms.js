@@ -70,9 +70,22 @@
       } = context;
 
       event.preventDefault();
+      // Disable submit and show spinner while processing
+      if (dom.medSubmitBtn) dom.medSubmitBtn.disabled = true;
+      try {
+        const spinner = document.getElementById('medSaveSpinner');
+        if (spinner) spinner.classList.remove('hidden');
+      } catch (e) {}
+      try {
       const formData = new FormData(dom.medForm);
       const photoFile = formData.get("photo");
-      const photoDataUrl = photoFile instanceof File ? await fileToDataUrl(photoFile) : "";
+      const removePhotoFlag = formData.get("removePhoto");
+      // A file input always returns a File object; size > 0 means the user actually chose a file
+      const hasNewPhoto = photoFile instanceof File && photoFile.size > 0;
+      let photoDataUrl = "";
+      if (!removePhotoFlag && hasNewPhoto) {
+        photoDataUrl = await fileToDataUrl(photoFile);
+      }
 
       const existingMed = editingMedicationId ? state.medications.find((entry) => entry.id === editingMedicationId) : null;
       const startDateRaw = String(formData.get("startDate") || "").trim();
@@ -89,10 +102,21 @@
       const isPrn = frequency === "asRequired";
       const pillsPerDose = Number(formData.get("pillsPerDose") || 1);
 
+      // Fix A: silently drop dose plan entries for times no longer scheduled
+      Object.keys(parsedDosePlan).forEach((time) => {
+        if (!parsedTimes.includes(time)) delete parsedDosePlan[time];
+      });
+
       if (!isPrn && parsedTimes.length > 0 && Object.keys(parsedDosePlan).length === 0) {
         parsedTimes.forEach((time) => {
           parsedDosePlan[time] = pillsPerDose;
         });
+      }
+
+      // Fix B: clear uniform dose plan so pillsPerDose drives dose calculation
+      const planValues = Object.values(parsedDosePlan);
+      if (planValues.length > 0 && planValues.every((v) => v === pillsPerDose)) {
+        parsedDosePlan = {};
       }
 
       const med = {
@@ -113,17 +137,13 @@
         barcode: String(formData.get("barcode") || "").trim(),
         notes: String(formData.get("notes") || "").trim(),
         startDate: resolvedStartDate,
-        photoDataUrl: photoDataUrl || existingMed?.photoDataUrl || ""
+        photoDataUrl: (removePhotoFlag ? "" : (photoDataUrl || existingMed?.photoDataUrl || ""))
       };
 
       if (!med.name || !med.strength || !med.purpose || (!isPrn && med.times.length === 0)) {
         dom.safetyMessage.textContent = isPrn
           ? "Please fill required fields."
           : "Please fill required fields and valid time format HH:MM.";
-        return;
-      }
-      if (Object.keys(med.dosePlan).some((time) => !med.times.includes(time))) {
-        dom.safetyMessage.textContent = "Each dose plan time must also exist in the times field.";
         return;
       }
       if (isPrn) {
@@ -134,15 +154,34 @@
       const safetyWarning = checkSafetyForNewMed(med, existingMed?.id || null);
       dom.safetyMessage.textContent = safetyWarning;
       if (existingMed) {
+        // capture previous photo for undo if removed
+        const prevPhoto = existingMed.photoDataUrl || "";
         state.medications = state.medications.map((entry) => (entry.id === existingMed.id ? med : entry));
+        if (removePhotoFlag && prevPhoto) {
+          try { window.__photoUndo?.showUndoForRemoval(existingMed.id, prevPhoto); } catch (e) {}
+        }
       } else {
         state.medications.push(med);
       }
       saveState();
       dom.medForm.reset();
+      try {
+        const input = dom.medForm.querySelector('#photoInput');
+        if (input) input.value = "";
+        const preview = document.getElementById('photoPreview');
+        if (preview) preview.src = med.photoDataUrl || 'icons/icon-192.svg';
+      } catch (e) {}
       resetMedicationEditMode();
       flashMedicationSaved(dom, existingMed ? "Changes Saved" : "Medication Saved");
       renderAll();
+      } finally {
+        if (dom.medSubmitBtn) dom.medSubmitBtn.disabled = false;
+        try {
+          const spinner = document.getElementById('medSaveSpinner');
+          if (spinner) spinner.classList.add('hidden');
+          window.__checkStorageWarning?.();
+        } catch (e) {}
+      }
     }
 
     function handleProcedureSubmit(event, context) {
