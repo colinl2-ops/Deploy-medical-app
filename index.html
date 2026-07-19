@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
-    <link rel="stylesheet" href="styles.css?v=20260719-112733" />
+    <link rel="stylesheet" href="styles.css?v=20260719-171342" />
     <title>Medication Helper</title>
   </head>
   <body>
@@ -111,6 +111,15 @@
       <section class="card">
         <h2>Add/Update Medicine</h2>
         <p class="summary">Includes photo, schedule complexity, stock count, and safety checks.</p>
+        <div class="med-form-toolbar">
+          <div class="button-row full med-form-actions">
+            <button id="medSubmitBtn" class="primary-btn" type="submit">Save Medication</button>
+            <button id="medCancelEditBtn" class="secondary-btn hidden" type="button">Abandon Changes</button>
+            <span id="medSaveSpinner" class="spinner hidden" aria-hidden="true">Saving…</span>
+          </div>
+          <p id="medSavedFlag" class="save-flag hidden" aria-live="polite"></p>
+          <p id="safetyMessage" class="warn-text" aria-live="polite"></p>
+        </div>
         <form id="medForm" class="grid-form">
           <label>
             Medication name
@@ -212,32 +221,27 @@
             Notes
             <textarea name="notes" rows="2" placeholder="Keep away from sunlight"></textarea>
           </label>
-          <div class="button-row full">
-            <button id="medSubmitBtn" class="primary-btn" type="submit">Save Medication</button>
-            <button id="medCancelEditBtn" class="secondary-btn hidden" type="button">Abandon Changes</button>
-            <span id="medSaveSpinner" class="spinner hidden" aria-hidden="true">Saving…</span>
-          </div>
         </form>
-        <p id="medSavedFlag" class="save-flag hidden" aria-live="polite"></p>
         <p class="tiny-note">Use dose plan when morning and night quantities differ. Example: 08:00=1, 19:00=2.</p>
-        <p id="safetyMessage" class="warn-text" aria-live="polite"></p>
       </section>
 
       <section class="card">
         <h2>Today Timeline</h2>
+        <div class="timeline-toolbar">
+          <div class="button-row">
+            <button id="markMorningTakenBtn" class="primary-btn" type="button">Mark All Morning Taken</button>
+            <button id="markEveningTakenBtn" class="secondary-btn" type="button">Mark All Evening Taken</button>
+          </div>
+          <div id="todayTimelineActions" class="button-row">
+            <button id="startVoiceCmdBtn" class="secondary-btn" type="button">Voice Command</button>
+            <button id="exportCsvBtn" class="secondary-btn" type="button">Export CSV</button>
+            <button id="exportMedListBtn" class="secondary-btn" type="button">Export Med List</button>
+            <button id="exportAmPmBtn" class="secondary-btn" type="button">Export AM/PM List</button>
+            <button id="printReportBtn" class="secondary-btn" type="button">Print Summary</button>
+          </div>
+        </div>
         <p id="todaySummary" class="summary">No schedule yet.</p>
         <div id="timeline" class="timeline" aria-live="polite"></div>
-        <div class="button-row">
-          <button id="markMorningTakenBtn" class="primary-btn" type="button">Mark All Morning Taken</button>
-          <button id="markEveningTakenBtn" class="secondary-btn" type="button">Mark All Evening Taken</button>
-        </div>
-        <div id="todayTimelineActions" class="button-row">
-          <button id="startVoiceCmdBtn" class="secondary-btn" type="button">Voice Command</button>
-          <button id="exportCsvBtn" class="secondary-btn" type="button">Export CSV</button>
-          <button id="exportMedListBtn" class="secondary-btn" type="button">Export Med List</button>
-          <button id="exportAmPmBtn" class="secondary-btn" type="button">Export AM/PM List</button>
-          <button id="printReportBtn" class="secondary-btn" type="button">Print Summary</button>
-        </div>
       </section>
 
       <section class="card">
@@ -395,9 +399,9 @@
       </article>
     </template>
 
-    <script src="state.js?v=20260719-112733" defer></script>
-    <script src="forms.js?v=20260719-112733" defer></script>
-    <script src="renderer.js?v=20260719-112733" defer></script>
-    <script src="app.js?v=20260719-112733" defer></script>
+    <script src="state.js?v=20260719-171342" defer></script>
+    <script src="forms.js?v=20260719-171342" defer></script>
+    <script src="renderer.js?v=20260719-171342" defer></script>
+    <script src="app.js?v=20260719-171342" defer></script>
   </body>
 </html>
