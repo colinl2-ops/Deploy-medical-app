@@ -140,9 +140,7 @@ main {
 }
 
 .dashboard-top {
-  position: sticky;
-  top: 0.3rem;
-  z-index: 3;
+  position: static;
 }
 
 h2 {
