@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
-    <link rel="stylesheet" href="styles.css?v=20260719-172918" />
+    <link rel="stylesheet" href="styles.css?v=20260719-174100" />
     <title>Medication Helper</title>
   </head>
   <body>
@@ -111,14 +111,14 @@
       <section class="card">
         <h2>Add/Update Medicine</h2>
         <p class="summary">Includes photo, schedule complexity, stock count, and safety checks.</p>
-        <div class="med-form-toolbar">
+        <div id="medFormToolbar" class="med-form-toolbar">
           <div class="button-row full med-form-actions">
             <button id="medSubmitBtn" class="primary-btn" type="submit">Save Medication</button>
             <button id="medCancelEditBtn" class="secondary-btn hidden" type="button">Abandon Changes</button>
             <span id="medSaveSpinner" class="spinner hidden" aria-hidden="true">Saving…</span>
           </div>
           <p id="medSavedFlag" class="save-flag hidden" aria-live="polite"></p>
-          <p id="safetyMessage" class="warn-text" aria-live="polite"></p>
+          <p id="safetyMessage" class="warn-text" role="alert" aria-live="assertive"></p>
         </div>
         <form id="medForm" class="grid-form">
           <label>
@@ -402,6 +402,6 @@
     <script src="state.js?v=20260719-172918" defer></script>
     <script src="forms.js?v=20260719-172918" defer></script>
     <script src="renderer.js?v=20260719-172918" defer></script>
-    <script src="app.js?v=20260719-172918" defer></script>
+    <script src="app.js?v=20260719-174100" defer></script>
   </body>
 </html>

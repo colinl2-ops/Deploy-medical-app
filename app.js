@@ -5,7 +5,7 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260719-172918";
+const APP_BUILD = "20260719-174100";
 const APP_RELEASE_LABEL = "Flag 28";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
@@ -820,13 +820,57 @@ function medicationRequiredFieldsComplete(form) {
   return requiredFields.every((field) => String(field.value || "").trim().length > 0);
 }
 
+function medicationValidationState(form) {
+  const missingFields = [];
+  let firstInvalidField = null;
+  if (!form) {
+    return { valid: false, missingFields, firstInvalidField };
+  }
+
+  const requiredSelector = "[required], [data-required='true']";
+  let requiredFields = Array.from(form.querySelectorAll(requiredSelector));
+
+  try {
+    const frequency = String((form.frequency && form.frequency.value) || "").trim();
+    if (frequency === "asRequired") {
+      requiredFields = requiredFields.filter((field) => !(field.name === "times"));
+    }
+  } catch (e) {
+    // ignore and proceed with original required fields
+  }
+
+  requiredFields.forEach((field) => {
+    if (!String(field.value || "").trim()) {
+      if (!firstInvalidField) {
+        firstInvalidField = field;
+      }
+      const row = field.closest(".form-row") || field.parentElement;
+      const label = row?.querySelector("label")?.textContent?.replace(/Required/g, "").trim()
+        || field.getAttribute("aria-label")
+        || field.name
+        || "Required field";
+      if (!missingFields.includes(label)) {
+        missingFields.push(label);
+      }
+    }
+  });
+
+  return { valid: missingFields.length === 0, missingFields, firstInvalidField };
+}
+
 function updateMedicationSubmitState() {
   if (!dom.medSubmitBtn || !dom.medForm) {
     return;
   }
-  const disabled = !medicationRequiredFieldsComplete(dom.medForm);
+  const validation = medicationValidationState(dom.medForm);
+  const disabled = !validation.valid;
   dom.medSubmitBtn.disabled = disabled;
   dom.medSubmitBtn.setAttribute("aria-disabled", String(disabled));
+  if (dom.safetyMessage) {
+    dom.safetyMessage.textContent = validation.valid
+      ? ""
+      : `Please fill: ${validation.missingFields.join(", ")}.`;
+  }
 }
 
 function resetMedicationEditMode() {
@@ -1555,7 +1599,7 @@ function bindEvents() {
   dom.switchProfileBtn.addEventListener("click", switchUser);
 
   function markValidationErrors(form) {
-    let valid = true;
+    const validation = medicationValidationState(form);
     const requiredSelector = "[required], [data-required='true']";
     form.querySelectorAll(requiredSelector).forEach((el) => {
       const val = String(el.value || "").trim();
@@ -1569,7 +1613,6 @@ function bindEvents() {
       if (!val) {
         el.classList.add("field-error");
         if (msg) { msg.textContent = "Required"; msg.classList.add("visible"); }
-        valid = false;
       } else {
         el.classList.remove("field-error");
         if (msg) { msg.classList.remove("visible"); }
@@ -1581,7 +1624,7 @@ function bindEvents() {
         }
       }, { once: false });
     });
-    return valid;
+    return validation;
   }
 
   dom.medForm.addEventListener("input", updateMedicationSubmitState);
@@ -1589,10 +1632,17 @@ function bindEvents() {
 
   dom.medForm.addEventListener("submit", async (event) => {
     // Client-side highlight for required fields; stop submission if invalid.
-    const ok = markValidationErrors(dom.medForm);
-    if (!ok) {
+    const validation = markValidationErrors(dom.medForm);
+    if (!validation.valid) {
       event.preventDefault();
-      dom.safetyMessage.textContent = "Please fill required fields.";
+      const missingText = validation.missingFields.length > 0
+        ? `Please fill: ${validation.missingFields.join(", ")}.`
+        : "Please fill required fields.";
+      dom.safetyMessage.textContent = missingText;
+      const toolbar = document.getElementById("medFormToolbar");
+      toolbar?.scrollIntoView({ behavior: "smooth", block: "start" });
+      validation.firstInvalidField?.focus?.({ preventScroll: true });
+      validation.firstInvalidField?.scrollIntoView?.({ behavior: "smooth", block: "center" });
       return;
     }
     await formsApi.handleMedicationSubmit(event, {

@@ -195,6 +195,13 @@ h2 {
   margin-top: 0.45rem;
 }
 
+.med-form-toolbar .warn-text {
+  padding: 0.45rem 0.7rem;
+  border-radius: 12px;
+  border: 2px solid #f0c1c1;
+  background: #fff1f1;
+}
+
 .grid-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
