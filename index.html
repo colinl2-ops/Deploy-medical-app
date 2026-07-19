@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
-    <link rel="stylesheet" href="styles.css?v=20260719-105825" />
+    <link rel="stylesheet" href="styles.css?v=20260719-112733" />
     <title>Medication Helper</title>
   </head>
   <body>
@@ -165,12 +165,20 @@
             </select>
           </label>
           <label>
-            Times (comma separated HH:MM)
-            <input name="times" required data-required="true" placeholder="08:00, Breakfast, 19:00" />
+            <div class="required-row timing-picker-row">
+              <span>Times (HH:MM or preset label)</span>
+              <button type="button" class="secondary-btn timing-picker-button" data-timing-picker="medTimesPresetButton" aria-controls="medTimesPresetMenu" aria-expanded="false">Select Label</button>
+            </div>
+            <input name="times" required data-required="true" placeholder="08:00, 19:00" />
+            <div id="medTimesPresetMenu" class="timing-picker-menu" hidden></div>
           </label>
           <label>
-            Dose plan by time
-            <input name="dosePlan" placeholder="Breakfast=1, 19:00=1" />
+            <div class="required-row timing-picker-row">
+              <span>Dose plan by time (HH:MM or preset label)</span>
+              <button type="button" class="secondary-btn timing-picker-button" data-timing-picker="medDosePlanPresetButton" aria-controls="medDosePlanPresetMenu" aria-expanded="false">Select Label</button>
+            </div>
+            <input name="dosePlan" placeholder="08:00=1, 19:00=1" />
+            <div id="medDosePlanPresetMenu" class="timing-picker-menu" hidden></div>
           </label>
           <label>
             Food timing
@@ -387,9 +395,9 @@
       </article>
     </template>
 
-    <script src="state.js?v=20260719-105825" defer></script>
-    <script src="forms.js?v=20260719-105825" defer></script>
-    <script src="renderer.js?v=20260719-105825" defer></script>
-    <script src="app.js?v=20260719-105825" defer></script>
+    <script src="state.js?v=20260719-112733" defer></script>
+    <script src="forms.js?v=20260719-112733" defer></script>
+    <script src="renderer.js?v=20260719-112733" defer></script>
+    <script src="app.js?v=20260719-112733" defer></script>
   </body>
 </html>

@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260719-105825";
-const APP_RELEASE_LABEL = "Flag 25";
+const APP_BUILD = "20260719-112733";
+const APP_RELEASE_LABEL = "Flag 26";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -19,6 +19,10 @@ const byId = (id) => document.getElementById(id);
 
 const dom = {
   medForm: byId("medForm"),
+  medTimesPresetMenu: byId("medTimesPresetMenu"),
+  medDosePlanPresetMenu: byId("medDosePlanPresetMenu"),
+  medTimesPresetButton: document.querySelector("[data-timing-picker='medTimesPresetButton']"),
+  medDosePlanPresetButton: document.querySelector("[data-timing-picker='medDosePlanPresetButton']"),
   procedureForm: byId("procedureForm"),
   profileForm: byId("profileForm"),
   medList: byId("medList"),
@@ -388,6 +392,112 @@ function getDoseQuantityForTime(med, time) {
 
 function formatDosePlan(med) {
   return stateApi.formatDosePlan(med, getActiveProfile().timingPresets);
+}
+
+function activeTimingPresets() {
+  return stateApi.parseTimingPresets(getActiveProfile().timingPresets);
+}
+
+function liveTimingPickerMenu(id) {
+  return document.getElementById(id);
+}
+
+function liveTimingPickerButton(selector) {
+  return document.querySelector(selector);
+}
+
+function populateTimingPresetMenu(menu, presets, onSelect) {
+  if (!menu) {
+    return;
+  }
+
+  menu.innerHTML = "";
+  presets.forEach((preset) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "timing-picker-option";
+    option.textContent = `${preset.label} (${preset.time})`;
+    option.addEventListener("click", () => {
+      onSelect?.(preset);
+    });
+    menu.appendChild(option);
+  });
+
+  if (presets.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "muted";
+    empty.textContent = "No timing labels are set up for this profile.";
+    menu.appendChild(empty);
+  }
+}
+
+function refreshTimingPresetPickers() {
+  const presets = activeTimingPresets();
+  const timesMenu = liveTimingPickerMenu("medTimesPresetMenu");
+  const doseMenu = liveTimingPickerMenu("medDosePlanPresetMenu");
+  const timesButton = liveTimingPickerButton("[data-timing-picker='medTimesPresetButton']");
+  const doseButton = liveTimingPickerButton("[data-timing-picker='medDosePlanPresetButton']");
+
+  populateTimingPresetMenu(timesMenu, presets, (preset) => {
+    appendScheduleToken(dom.medForm?.times, preset.label);
+    closeTimingPresetMenus();
+    updateMedicationSubmitState();
+  });
+  populateTimingPresetMenu(doseMenu, presets, (preset) => {
+    const pillsPerDose = Number(dom.medForm?.pillsPerDose?.value || 1);
+    const suffix = Number.isFinite(pillsPerDose) && pillsPerDose > 0 ? `=${pillsPerDose}` : "=1";
+    appendScheduleToken(dom.medForm?.dosePlan, preset.label, suffix);
+    closeTimingPresetMenus();
+    updateMedicationSubmitState();
+  });
+  if (timesButton) {
+    timesButton.disabled = presets.length === 0;
+  }
+  if (doseButton) {
+    doseButton.disabled = presets.length === 0;
+  }
+}
+
+function closeTimingPresetMenus() {
+  [liveTimingPickerMenu("medTimesPresetMenu"), liveTimingPickerMenu("medDosePlanPresetMenu")].forEach((menu) => {
+    if (menu) {
+      menu.hidden = true;
+    }
+  });
+  [liveTimingPickerButton("[data-timing-picker='medTimesPresetButton']"), liveTimingPickerButton("[data-timing-picker='medDosePlanPresetButton']")].forEach((button) => {
+    if (button) {
+      button.setAttribute("aria-expanded", "false");
+    }
+  });
+}
+
+function toggleTimingPresetMenu(menuId, buttonSelector) {
+  const menu = liveTimingPickerMenu(menuId);
+  const button = liveTimingPickerButton(buttonSelector);
+  if (!menu || !button || button.disabled) {
+    return;
+  }
+
+  const shouldOpen = menu.hidden;
+  closeTimingPresetMenus();
+  menu.hidden = !shouldOpen ? true : false;
+  button.setAttribute("aria-expanded", String(shouldOpen));
+}
+
+function appendScheduleToken(field, token, suffix = "") {
+  if (!field || !token) {
+    return;
+  }
+
+  const current = String(field.value || "").trim();
+  const nextToken = suffix ? `${token}${suffix}` : token;
+  if (!current) {
+    field.value = nextToken;
+    return;
+  }
+
+  const separator = current.endsWith(",") ? " " : ", ";
+  field.value = `${current}${separator}${nextToken}`;
 }
 
 function serializeDosePlan(med) {
@@ -971,6 +1081,7 @@ function syncProfileForm() {
   if (form.timingPresets) {
     form.timingPresets.value = stateApi.formatTimingPresets(profile.timingPresets);
   }
+  refreshTimingPresetPickers();
 
   const hasTwoProfiles = state.profiles.length >= 2;
   dom.addProfileBtn.disabled = hasTwoProfiles;
@@ -1297,11 +1408,13 @@ function bindEvents() {
 
         row.classList.add("compulsory-field");
 
+        const chipHost = row.querySelector(".required-row") || row;
+
         if (!row.querySelector(".compulsory-chip")) {
           const chip = document.createElement("span");
           chip.className = "compulsory-chip";
           chip.textContent = "Required";
-          row.insertBefore(chip, row.firstChild);
+          chipHost.insertBefore(chip, chipHost.firstChild);
         }
       });
     });
@@ -1318,13 +1431,14 @@ function bindEvents() {
 
     const isPrn = String(freqField.value || "").trim() === "asRequired";
     const row = timesField.closest(".form-row") || timesField.parentElement;
+    const chipHost = row?.querySelector(".required-row") || row;
 
     if (isPrn) {
       timesField.removeAttribute("required");
       timesField.removeAttribute("data-required");
       if (row) {
         row.classList.remove("compulsory-field");
-        const chip = row.querySelector(".compulsory-chip");
+        const chip = chipHost?.querySelector(".compulsory-chip");
         if (chip) {
           chip.remove();
         }
@@ -1334,11 +1448,11 @@ function bindEvents() {
       timesField.setAttribute("data-required", "true");
       if (row) {
         row.classList.add("compulsory-field");
-        if (!row.querySelector(".compulsory-chip")) {
+        if (chipHost && !chipHost.querySelector(".compulsory-chip")) {
           const chip = document.createElement("span");
           chip.className = "compulsory-chip";
           chip.textContent = "Required";
-          row.insertBefore(chip, row.firstChild);
+          chipHost.insertBefore(chip, chipHost.firstChild);
         }
       }
     }
@@ -1385,6 +1499,21 @@ function bindEvents() {
       form.dosePlan.value = "";
     }
   }
+
+  document.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("[data-timing-picker='medTimesPresetButton']")) {
+      toggleTimingPresetMenu("medTimesPresetMenu", "[data-timing-picker='medTimesPresetButton']");
+      return;
+    }
+    if (target?.closest("[data-timing-picker='medDosePlanPresetButton']")) {
+      toggleTimingPresetMenu("medDosePlanPresetMenu", "[data-timing-picker='medDosePlanPresetButton']");
+      return;
+    }
+    if (!target?.closest(".timing-picker-row") && !target?.closest(".timing-picker-menu")) {
+      closeTimingPresetMenus();
+    }
+  }, true);
 
   dom.medForm?.frequency?.addEventListener("change", syncTimesRequirement);
   dom.medForm?.times?.addEventListener("blur", syncDosePlanToTimes);
@@ -1474,7 +1603,7 @@ function bindEvents() {
       toDateKey,
       isValidDateKey: stateApi.isValidDateKey,
       parseDosePlan,
-      parseTimes: stateApi.parseTimes,
+      parseTimes,
       parseWeeklyDays: stateApi.parseWeeklyDays,
       makeId,
       checkSafetyForNewMed,
