@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
-    <link rel="stylesheet" href="styles.css?v=20260718-205734" />
+    <link rel="stylesheet" href="styles.css?v=20260719-105825" />
     <title>Medication Helper</title>
   </head>
   <body>
@@ -88,6 +88,10 @@
             <input name="voiceLang" placeholder="en-US, hi-IN, ta-IN" value="en-US" />
           </label>
           <label class="full">
+            Timing presets
+            <textarea name="timingPresets" rows="7" placeholder="Breakfast=08:00\nMid morning=10:00\nDinner=18:00"></textarea>
+          </label>
+          <label class="full">
             Conditions
             <textarea name="conditions" rows="2" placeholder="Diabetes, hypertension"></textarea>
           </label>
@@ -162,11 +166,11 @@
           </label>
           <label>
             Times (comma separated HH:MM)
-            <input name="times" required data-required="true" placeholder="08:00, 19:00" />
+            <input name="times" required data-required="true" placeholder="08:00, Breakfast, 19:00" />
           </label>
           <label>
             Dose plan by time
-            <input name="dosePlan" placeholder="08:00=1, 19:00=1" />
+            <input name="dosePlan" placeholder="Breakfast=1, 19:00=1" />
           </label>
           <label>
             Food timing
@@ -383,9 +387,9 @@
       </article>
     </template>
 
-    <script src="state.js?v=20260718-205734" defer></script>
-    <script src="forms.js?v=20260718-205734" defer></script>
-    <script src="renderer.js?v=20260718-205734" defer></script>
-    <script src="app.js?v=20260718-205734" defer></script>
+    <script src="state.js?v=20260719-105825" defer></script>
+    <script src="forms.js?v=20260719-105825" defer></script>
+    <script src="renderer.js?v=20260719-105825" defer></script>
+    <script src="app.js?v=20260719-105825" defer></script>
   </body>
 </html>

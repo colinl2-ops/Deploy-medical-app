@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260718-205734";
-const APP_RELEASE_LABEL = "Flag 24";
+const APP_BUILD = "20260719-105825";
+const APP_RELEASE_LABEL = "Flag 25";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -313,7 +313,16 @@ function defaultProfile() {
     bloodGroup: "",
     conditions: "",
     allergies: "",
-    voiceLang: "en-US"
+    voiceLang: "en-US",
+    timingPresets: [
+      { key: "wake_up", label: "When I wake up", time: "07:00" },
+      { key: "before_breakfast", label: "Half hour before breakfast", time: "07:30" },
+      { key: "breakfast", label: "Breakfast", time: "08:00" },
+      { key: "mid_morning", label: "Mid morning", time: "10:00" },
+      { key: "mid_afternoon", label: "Mid afternoon", time: "15:00" },
+      { key: "dinner", label: "Dinner", time: "18:00" },
+      { key: "sleep", label: "Before going to sleep", time: "22:00" }
+    ]
   };
 }
 
@@ -358,11 +367,11 @@ function toDateKey(date) {
 }
 
 function parseDosePlan(raw) {
-  return stateApi.parseDosePlan(raw);
+  return stateApi.parseDosePlan(raw, getActiveProfile().timingPresets);
 }
 
 function parseTimes(raw) {
-  return stateApi.parseTimes(raw);
+  return stateApi.parseTimes(raw, getActiveProfile().timingPresets);
 }
 
 function normalizeDosePlan(value) {
@@ -378,7 +387,7 @@ function getDoseQuantityForTime(med, time) {
 }
 
 function formatDosePlan(med) {
-  return stateApi.formatDosePlan(med);
+  return stateApi.formatDosePlan(med, getActiveProfile().timingPresets);
 }
 
 function serializeDosePlan(med) {
@@ -644,6 +653,7 @@ function renderMeds(meds) {
     dom,
     daysLeft,
     formatDosePlan,
+    formatTimeWithLabel: (time) => stateApi.profileTimingLabelForTime(getActiveProfile(), time),
     includesDay,
     friendlyFoodRule,
     friendlyFrequency,
@@ -652,6 +662,7 @@ function renderMeds(meds) {
     doseUnit,
     refillFlag,
     friendlyForm,
+    timingPresets: getActiveProfile().timingPresets,
     beginMedicationFormSync: () => {
       medicationFormSyncing = true;
     },
@@ -774,7 +785,7 @@ function showAlarm(dose, med) {
 
   activeAlarmDoseId = dose.id;
   dom.alarmTitle.textContent = `Reminder: ${med.name}`;
-  dom.alarmMessage.textContent = stateApi.buildAlarmDisplayMessage(dose, med);
+  dom.alarmMessage.textContent = stateApi.buildAlarmDisplayMessage(dose, med, getActiveProfile().timingPresets);
   dom.alarmOverlay.classList.remove("hidden");
 
   if (navigator.vibrate) {
@@ -957,6 +968,9 @@ function syncProfileForm() {
   form.conditions.value = profile.conditions || "";
   form.allergies.value = profile.allergies || "";
   form.voiceLang.value = profile.voiceLang || "en-US";
+  if (form.timingPresets) {
+    form.timingPresets.value = stateApi.formatTimingPresets(profile.timingPresets);
+  }
 
   const hasTwoProfiles = state.profiles.length >= 2;
   dom.addProfileBtn.disabled = hasTwoProfiles;
@@ -1386,6 +1400,7 @@ function bindEvents() {
     formsApi.handleProfileSubmit(event, {
       dom,
       getActiveProfile,
+      parseTimingPresets: stateApi.parseTimingPresets,
       saveState,
       renderAll
     });

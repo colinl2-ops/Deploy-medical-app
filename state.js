@@ -2,14 +2,155 @@
   function createStateApi(config) {
     const keys = config.keys;
     const helpers = config.helpers;
+    const DEFAULT_TIMING_PRESETS = [
+      { key: "wake_up", label: "When I wake up", time: "07:00" },
+      { key: "before_breakfast", label: "Half hour before breakfast", time: "07:30" },
+      { key: "breakfast", label: "Breakfast", time: "08:00" },
+      { key: "mid_morning", label: "Mid morning", time: "10:00" },
+      { key: "mid_afternoon", label: "Mid afternoon", time: "15:00" },
+      { key: "dinner", label: "Dinner", time: "18:00" },
+      { key: "sleep", label: "Before going to sleep", time: "22:00" }
+    ];
+
     const buildDefaultState = function() {
       const first = helpers.defaultProfile();
       return { profiles: [first], activeProfileId: first.id, medications: [], procedures: [], doses: [], settings: { highContrast: false } };
     };
 
+    const validTimePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+    function normalizeTimingLabel(value) {
+      return String(value || "").trim().replace(/\s+/g, " ");
+    }
+
+    function slugifyTimingLabel(value) {
+      return normalizeTimingLabel(value).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    }
+
+    function normalizeTimingTime(value) {
+      const time = normalizeTimingLabel(value);
+      return validTimePattern.test(time) ? time : "";
+    }
+
+    function normalizeTimingPresetEntry(entry) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return null;
+      }
+
+      const label = normalizeTimingLabel(entry.label || entry.name || entry.key);
+      const time = normalizeTimingTime(entry.time || entry.value);
+      if (!label || !time) {
+        return null;
+      }
+
+      return {
+        key: slugifyTimingLabel(entry.key || label),
+        label,
+        time
+      };
+    }
+
+    function normalizeTimingPresets(value, options = {}) {
+      if (value == null) {
+        return options.defaultIfMissing === false ? [] : DEFAULT_TIMING_PRESETS.map((preset) => ({ ...preset }));
+      }
+
+      let entries = [];
+      if (Array.isArray(value)) {
+        entries = value;
+      } else if (typeof value === "object") {
+        entries = Object.entries(value).map(([label, time]) => ({ label, time }));
+      } else if (typeof value === "string") {
+        entries = String(value)
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => {
+            const separatorIndex = line.indexOf("=") >= 0 ? line.indexOf("=") : line.indexOf(":");
+            if (separatorIndex < 0) {
+              return null;
+            }
+            return {
+              label: line.slice(0, separatorIndex).trim(),
+              time: line.slice(separatorIndex + 1).trim()
+            };
+          })
+          .filter(Boolean);
+      }
+
+      const seenLabels = new Set();
+      const seenTimes = new Set();
+      const normalized = [];
+
+      entries.forEach((entry) => {
+        const normalizedEntry = normalizeTimingPresetEntry(entry);
+        if (!normalizedEntry) {
+          return;
+        }
+        const labelKey = normalizedEntry.key;
+        if (seenLabels.has(labelKey) || seenTimes.has(normalizedEntry.time)) {
+          return;
+        }
+        seenLabels.add(labelKey);
+        seenTimes.add(normalizedEntry.time);
+        normalized.push(normalizedEntry);
+      });
+
+      return normalized;
+    }
+
+    function timingPresetLookup(presets) {
+      const normalized = normalizeTimingPresets(presets, { defaultIfMissing: false });
+      const byLabel = new Map();
+      const byKey = new Map();
+      const byTime = new Map();
+
+      normalized.forEach((preset) => {
+        byLabel.set(normalizeTimingLabel(preset.label).toLowerCase(), preset.time);
+        byKey.set(preset.key, preset.time);
+        byTime.set(preset.time, preset.label);
+      });
+
+      return { presets: normalized, byLabel, byKey, byTime };
+    }
+
+    function resolveScheduledTime(value, timingPresets) {
+      const token = normalizeTimingLabel(value);
+      if (!token) {
+        return "";
+      }
+      if (validTimePattern.test(token)) {
+        return token;
+      }
+
+      const lookup = timingPresetLookup(timingPresets);
+      const normalizedToken = token.toLowerCase();
+      return lookup.byLabel.get(normalizedToken) || lookup.byKey.get(slugifyTimingLabel(token)) || "";
+    }
+
+    function formatTimeWithLabel(time, timingPresets) {
+      const normalizedTime = normalizeTimingTime(time);
+      if (!normalizedTime) {
+        return normalizeTimingLabel(time);
+      }
+
+      const lookup = timingPresetLookup(timingPresets);
+      const label = lookup.byTime.get(normalizedTime);
+      return label ? `${normalizedTime} - ${label}` : normalizedTime;
+    }
+
+    function formatTimingPresets(timingPresets) {
+      return normalizeTimingPresets(timingPresets, { defaultIfMissing: false })
+        .map((preset) => `${preset.label}=${preset.time}`)
+        .join("\n");
+    }
+
     const normalizeState = function(parsed) {
       if (!parsed || !Array.isArray(parsed.profiles) || parsed.profiles.length === 0) return null;
-      const profiles = parsed.profiles;
+      const profiles = parsed.profiles.map((profile) => ({
+        ...profile,
+        timingPresets: normalizeTimingPresets(profile.timingPresets)
+      }));
       const resolvedActiveProfileId = profiles.some((profile) => profile.id === parsed.activeProfileId) ? parsed.activeProfileId : profiles[0].id;
       const migratedMeds = (parsed.medications || []).map((med) => ({ ...med, profileId: med.profileId || resolvedActiveProfileId }));
       const migratedDoses = (parsed.doses || []).map((dose) => ({ ...dose, profileId: dose.profileId || resolvedActiveProfileId }));
@@ -113,14 +254,15 @@
       return state.procedures.filter((procedure) => procedure.profileId === state.activeProfileId);
     }
 
-    function parseTimes(raw) {
+    function parseTimes(raw, timingPresets = []) {
       return String(raw || "")
         .split(",")
         .map((item) => item.trim())
-        .filter((item) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(item));
+        .map((item) => resolveScheduledTime(item, timingPresets))
+        .filter((item) => validTimePattern.test(item));
     }
 
-    function parseDosePlan(raw) {
+    function parseDosePlan(raw, timingPresets = []) {
       const plan = {};
 
       String(raw || "")
@@ -130,10 +272,11 @@
         .forEach((entry) => {
           const [timeRaw, qtyRaw] = entry.split("=").map((item) => item.trim());
           const quantity = Number(qtyRaw);
-          if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(timeRaw) || !Number.isFinite(quantity) || quantity <= 0) {
+          const resolvedTime = resolveScheduledTime(timeRaw, timingPresets);
+          if (!validTimePattern.test(resolvedTime) || !Number.isFinite(quantity) || quantity <= 0) {
             return;
           }
-          plan[timeRaw] = quantity;
+          plan[resolvedTime] = quantity;
         });
 
       return plan;
@@ -142,7 +285,7 @@
     const normalizeDosePlan = function(value) {
       if (!value || typeof value !== "object" || Array.isArray(value)) return {};
       return Object.entries(value).reduce((plan, [time, quantity]) => {
-        if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) return plan;
+        if (!validTimePattern.test(time)) return plan;
         const normalizedQuantity = Number(quantity);
         if (!Number.isFinite(normalizedQuantity) || normalizedQuantity <= 0) return plan;
         plan[time] = normalizedQuantity;
@@ -209,7 +352,7 @@
       return days.slice().sort((a,b)=>a-b).map((d)=>names[d]||"").filter(Boolean).join(", ");
     };
 
-    const formatDosePlan = function(med) {
+    const formatDosePlan = function(med, timingPresets = []) {
       if (med.frequency === "asRequired") return `${Number(med.pillsPerDose || 1)} ${doseUnit(med)}`;
       const times = Array.isArray(med.times) ? med.times : [];
       if (times.length === 0) return `No schedule - ${Number(med.pillsPerDose || 1)} ${doseUnit(med)}`;
@@ -217,14 +360,14 @@
         .map((time) => {
           const qty = getDoseQuantityForTime(med, time);
           const qtyText = qty === -1 ? "(not set)" : `${qty} ${doseUnit(med)}`;
-          return `${time} ${qtyText}`;
+          return `${formatTimeWithLabel(time, timingPresets)} ${qtyText}`;
         })
         .join(", ");
     };
 
-    const medDisplayLine = function(med) {
+    const medDisplayLine = function(med, timingPresets = []) {
       if (med.frequency === "asRequired") return `As required - ${med.pillsPerDose} ${doseUnit(med)}`;
-      return formatDosePlan(med);
+      return formatDosePlan(med, timingPresets);
     };
 
     const statusText = function(status) {
@@ -564,12 +707,14 @@
           lines.push("");
           lines.push(`${i + 1}. ${med.name}${med.strength ? "  " + med.strength : ""}`);
           if (med.purpose) lines.push(`   Purpose  : ${med.purpose}`);
-          const times = Array.isArray(med.times) && med.times.length > 0 ? med.times.join(", ") : "Not set";
+          const times = Array.isArray(med.times) && med.times.length > 0
+            ? med.times.map((time) => formatTimeWithLabel(time, profile.timingPresets)).join(", ")
+            : "Not set";
           const freqExport = med.frequency === "weekly"
             ? `Weekly — ${friendlyWeeklyDays(med.weeklyDays) || "day not specified"}`
             : (FREQ_LABELS[med.frequency] || "Daily");
           lines.push(`   Schedule : ${freqExport}  -  ${times}`);
-          lines.push(`   Dose plan: ${formatDosePlan(med)}`);
+          lines.push(`   Dose plan: ${formatDosePlan(med, profile.timingPresets)}`);
           lines.push(`   Repeats  : ${repeatsCount(med)}`);
           lines.push(`   Food     : ${FOOD_LABELS[med.foodRule] || med.foodRule || "No special requirement"}`);
           if (med.notes) lines.push(`   Notes    : ${med.notes}`);
@@ -633,9 +778,10 @@
         times.forEach((time) => {
           const minutes = toMinutes(time);
           const doseLine = `- ${med.name}${med.strength ? ` (${med.strength})` : ""} - ${getDoseQuantityForTime(med, time)} ${doseUnit(med)}`;
+          const displayTime = formatTimeWithLabel(time, profile.timingPresets);
 
           if (!timeGroups.has(time)) {
-            timeGroups.set(time, { minutes, rows: [] });
+            timeGroups.set(time, { minutes, displayTime, rows: [] });
           }
 
           timeGroups.get(time).rows.push({ medName: med.name, line: doseLine });
@@ -655,7 +801,7 @@
         lines.push("- None");
       } else {
         sortedTimes.forEach(([time, group]) => {
-          lines.push(time);
+          lines.push(group.displayTime || time);
           group.rows
             .sort((a, b) => a.medName.localeCompare(b.medName))
             .forEach((row) => lines.push(row.line));
@@ -738,8 +884,8 @@
       return null;
     }
 
-    function buildAlarmDisplayMessage(dose, med) {
-      return `${dose.time} - ${getDoseQuantityForTime(med, dose.time)} ${doseUnit(med)}. ${friendlyFoodRule(med.foodRule)}.`;
+    function buildAlarmDisplayMessage(dose, med, timingPresets = []) {
+      return `${formatTimeWithLabel(dose.time, timingPresets)} - ${getDoseQuantityForTime(med, dose.time)} ${doseUnit(med)}. ${friendlyFoodRule(med.foodRule)}.`;
     }
 
     function buildReminderSpeechText(med) {
@@ -903,6 +1049,18 @@
       }
     }
 
+    function profileTimingPresets(profile) {
+      return normalizeTimingPresets(profile?.timingPresets, { defaultIfMissing: true });
+    }
+
+    function profileTimingLabelForTime(profile, time) {
+      return formatTimeWithLabel(time, profileTimingPresets(profile));
+    }
+
+    function profileTimingTimeForLabel(profile, value) {
+      return resolveScheduledTime(value, profileTimingPresets(profile));
+    }
+
     return {
       buildDefaultState,
       normalizeState,
@@ -913,6 +1071,8 @@
       proceduresForActiveProfile,
       parseTimes,
       parseDosePlan,
+      parseTimingPresets: normalizeTimingPresets,
+      formatTimingPresets,
       normalizeDosePlan,
       hasDosePlan,
       getDoseQuantityForTime,
@@ -955,6 +1115,9 @@
       normalizeImportedBackup,
       buildAlarmDisplayMessage,
       buildReminderSpeechText,
+      profileTimingPresets,
+      profileTimingLabelForTime,
+      profileTimingTimeForLabel,
       findPendingDueDose,
       shouldEscalateAlarmMessage,
       forceParamState,

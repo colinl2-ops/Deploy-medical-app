@@ -182,6 +182,7 @@
         dom,
         daysLeft,
         formatDosePlan,
+        formatTimeWithLabel,
         includesDay,
         friendlyFoodRule,
         friendlyFrequency,
@@ -222,7 +223,9 @@
 
         const timesText = med.frequency === "asRequired"
           ? "As required (no schedule)"
-          : `Times: ${Array.isArray(med.times) && med.times.length > 0 ? med.times.join(", ") : "Not set"}`;
+          : `Times: ${Array.isArray(med.times) && med.times.length > 0
+            ? med.times.map((time) => (typeof formatTimeWithLabel === "function" ? formatTimeWithLabel(time) : time)).join(", ")
+            : "Not set"}`;
         node.querySelector(".med-times").textContent = timesText;
 
         node.querySelector(".med-dose-plan").textContent = `Dose plan: ${formatDosePlan(med)}`;

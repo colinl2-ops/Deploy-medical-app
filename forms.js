@@ -31,7 +31,7 @@
     }
 
     function handleProfileSubmit(event, context) {
-      const { dom, getActiveProfile, saveState, renderAll } = context;
+      const { dom, getActiveProfile, parseTimingPresets, saveState, renderAll } = context;
       event.preventDefault();
       const profile = getActiveProfile();
       const formData = new FormData(dom.profileForm);
@@ -46,6 +46,9 @@
       profile.conditions = String(formData.get("conditions") || "").trim();
       profile.allergies = String(formData.get("allergies") || "").trim();
       profile.voiceLang = String(formData.get("voiceLang") || "en-US").trim();
+      profile.timingPresets = typeof parseTimingPresets === "function"
+        ? parseTimingPresets(formData.get("timingPresets"))
+        : String(formData.get("timingPresets") || "").trim();
 
       saveState();
       renderAll();
