@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260720-134245";
-const APP_RELEASE_LABEL = "Flag 35";
+const APP_BUILD = "20260720-134632";
+const APP_RELEASE_LABEL = "Flag 36";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -358,6 +358,17 @@ function resolveMedicationSearch() {
         : `${matches.length} matches. Tap the medicine you want.`;
   }
 }
+
+  function submitMedicationSearch() {
+    const query = dom.searchMedInput?.value || "";
+    const matches = medicationSearchMatches(query);
+    if (matches.length === 1) {
+      selectMedicationSearchMatch(matches[0]);
+      return;
+    }
+
+    resolveMedicationSearch();
+  }
 
 function makeId() {
   if (crypto?.randomUUID) {
@@ -2034,7 +2045,7 @@ function bindEvents() {
   dom.searchMedInput?.addEventListener("input", resolveMedicationSearch);
   dom.searchMedForm?.addEventListener("submit", (event) => {
     event.preventDefault();
-    resolveMedicationSearch();
+    submitMedicationSearch();
   });
   dom.cancelSearchMedBtn?.addEventListener("click", () => closeMedicationSearch("Search cancelled."));
   dom.searchMedInput?.addEventListener("keydown", (event) => {
