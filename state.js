@@ -145,6 +145,34 @@
         .join("\n");
     }
 
+    function normalizeDoseDateKey(dose) {
+      if (!dose || !dose.timestamp) {
+        return dose;
+      }
+
+      const timestampDate = new Date(dose.timestamp);
+      if (Number.isNaN(timestampDate.getTime())) {
+        return dose;
+      }
+
+      const normalizedDateKey = helpers.toDateKey(timestampDate);
+      if (!normalizedDateKey || normalizedDateKey === dose.dateKey) {
+        return dose;
+      }
+
+      const normalized = { ...dose, dateKey: normalizedDateKey };
+      if (dose.medId && dose.time) {
+        if (String(dose.id || "").includes("|prn-")) {
+          const suffixIndex = String(dose.id).indexOf("|prn-");
+          normalized.id = `${dose.medId}|${normalizedDateKey}${String(dose.id).slice(suffixIndex)}`;
+        } else {
+          normalized.id = `${dose.medId}|${normalizedDateKey}|${dose.time}`;
+        }
+      }
+
+      return normalized;
+    }
+
     const normalizeState = function(parsed) {
       if (!parsed || !Array.isArray(parsed.profiles) || parsed.profiles.length === 0) return null;
       const profiles = parsed.profiles.map((profile) => ({
@@ -153,7 +181,7 @@
       }));
       const resolvedActiveProfileId = profiles.some((profile) => profile.id === parsed.activeProfileId) ? parsed.activeProfileId : profiles[0].id;
       const migratedMeds = (parsed.medications || []).map((med) => ({ ...med, profileId: med.profileId || resolvedActiveProfileId }));
-      const migratedDoses = (parsed.doses || []).map((dose) => ({ ...dose, profileId: dose.profileId || resolvedActiveProfileId }));
+      const migratedDoses = (parsed.doses || []).map((dose) => normalizeDoseDateKey({ ...dose, profileId: dose.profileId || resolvedActiveProfileId }));
       const migratedProcedures = (parsed.procedures || []).map((procedure) => ({ ...procedure, profileId: procedure.profileId || resolvedActiveProfileId }));
       return { profiles, activeProfileId: resolvedActiveProfileId, medications: migratedMeds, procedures: migratedProcedures, doses: migratedDoses, settings: parsed.settings || { highContrast: false } };
     };
