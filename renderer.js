@@ -284,6 +284,9 @@
             beginMedicationFormSync();
           }
           try {
+            if (typeof clearMedicationSavedStatus === "function") {
+              clearMedicationSavedStatus();
+            }
             setEditingMedicationId(med.id);
             dom.medForm.name.value = med.name || "";
             dom.medForm.strength.value = med.strength || "";

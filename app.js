@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260720-130320";
-const APP_RELEASE_LABEL = "Flag 29";
+const APP_BUILD = "20260720-131822";
+const APP_RELEASE_LABEL = "Flag 30";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -150,6 +150,9 @@ function updateMedicationAbandonButtonState() {
 
 function setMedicationFormDirty(isDirty) {
   medicationFormIsDirty = Boolean(isDirty);
+  if (medicationFormIsDirty) {
+    clearMedicationSavedStatus();
+  }
   updateMedicationAbandonButtonState();
 }
 
@@ -158,26 +161,19 @@ function flashMedicationStatus(message) {
     return;
   }
 
-  if (medicationStatusTimeoutId) {
-    clearTimeout(medicationStatusTimeoutId);
-    medicationStatusTimeoutId = null;
-  }
-
   dom.medSavedFlag.textContent = message || "";
   dom.medSavedFlag.classList.remove("hidden");
   dom.medSavedFlag.classList.add("visible");
+}
 
-  medicationStatusTimeoutId = window.setTimeout(() => {
-    if (!dom.medSavedFlag) {
-      medicationStatusTimeoutId = null;
-      return;
-    }
+function clearMedicationSavedStatus() {
+  if (!dom.medSavedFlag) {
+    return;
+  }
 
-    dom.medSavedFlag.textContent = "";
-    dom.medSavedFlag.classList.add("hidden");
-    dom.medSavedFlag.classList.remove("visible");
-    medicationStatusTimeoutId = null;
-  }, 2000);
+  dom.medSavedFlag.textContent = "";
+  dom.medSavedFlag.classList.add("hidden");
+  dom.medSavedFlag.classList.remove("visible");
 }
 
 function clearMedicationFormPreview() {
@@ -826,6 +822,7 @@ function renderMeds(meds) {
     clearMedicationFormDirty: () => {
       setMedicationFormDirty(false);
     },
+    clearMedicationSavedStatus,
     setEditingMedicationId: (id) => {
       editingMedicationId = id;
     },
@@ -2165,6 +2162,7 @@ window.__medicationFormTestApi = {
   requestCloseAllWindows,
   switchUser,
   getActiveProfileId: () => state.activeProfileId,
+  clearMedicationSavedStatus,
   setEditingMedicationId: (id) => {
     editingMedicationId = id;
   }

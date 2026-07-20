@@ -178,7 +178,7 @@
       } catch (e) {}
       resetMedicationEditMode();
       dom.safetyMessage.textContent = safetyWarning || "";
-      flashMedicationSaved(dom, existingMed ? "Changes Saved" : "Medication Saved");
+        flashMedicationSaved(dom, existingMed ? "Changes saved. The form is ready for a new medicine." : "Medication saved. The form is ready for a new medicine.");
       renderAll();
       } finally {
         if (dom.medSubmitBtn) dom.medSubmitBtn.disabled = false;
