@@ -200,10 +200,25 @@
         openMedicationFormCard,
         refreshMedicationSubmitState,
         logPrnDose,
+        lastTakenForMed,
+        minHoursBetweenDoses,
         state,
         saveState,
         renderAll
       } = context;
+
+      function formatDuration(ms) {
+        const totalMinutes = Math.max(0, Math.round(ms / 60000));
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        if (hours > 0 && minutes > 0) {
+          return `${hours}h ${minutes}m`;
+        }
+        if (hours > 0) {
+          return `${hours}h`;
+        }
+        return `${minutes}m`;
+      }
 
       dom.medList.innerHTML = "";
       const sortedMeds = [...meds].sort((a, b) => {
@@ -236,8 +251,28 @@
         const nextDoseWeekday = med.frequency === "weekly" || med.frequency === "everyOtherDay"
           ? nextScheduledDoseWeekday(med, includesDay)
           : "";
-        const nextDoseText = nextDoseWeekday ? ` | Next: ${nextDoseWeekday}` : "";
-        node.querySelector(".med-schedule").textContent = `${friendlyFoodRule(med.foodRule)} | ${freqLabel}${nextDoseText} | Repeats: ${repeatsCount(med)}`;
+        const scheduleBits = [friendlyFoodRule(med.foodRule), freqLabel];
+        if (med.frequency === "asRequired") {
+          const gapHours = typeof minHoursBetweenDoses === "function" ? minHoursBetweenDoses(med) : Number(med.minGapHours) || 0;
+          const previous = typeof lastTakenForMed === "function" ? lastTakenForMed(med.id) : null;
+          if (gapHours > 0) {
+            scheduleBits.push(`PRN gap ${gapHours}h`);
+          }
+          if (previous?.timestamp) {
+            const elapsedMs = Date.now() - new Date(previous.timestamp).getTime();
+            scheduleBits.push(`Last taken ${formatDuration(elapsedMs)} ago`);
+            if (gapHours > 0) {
+              const remainingMs = Math.max(0, (gapHours * 60 * 60 * 1000) - elapsedMs);
+              scheduleBits.push(remainingMs > 0 ? `Next allowed in ${formatDuration(remainingMs)}` : "Allowed now");
+            }
+          } else {
+            scheduleBits.push("No doses logged yet");
+          }
+        } else if (nextDoseWeekday) {
+          scheduleBits.push(`Next: ${nextDoseWeekday}`);
+        }
+        scheduleBits.push(`Repeats: ${repeatsCount(med)}`);
+        node.querySelector(".med-schedule").textContent = scheduleBits.join(" | ");
 
         const dl = daysLeft(med);
         const daysText = Number.isFinite(dl) ? `${dl.toFixed(1)} day(s) left` : `Stock: ${med.stock} ${doseUnit(med)}`;
@@ -262,6 +297,9 @@
             dom.medForm.foodRule.value = med.foodRule || "none";
             dom.medForm.frequency.value = med.frequency || "daily";
             dom.medForm.frequency.dispatchEvent(new Event("change", { bubbles: true }));
+            if (dom.medForm.minGapHours) {
+              dom.medForm.minGapHours.value = Number.isFinite(Number(med.minGapHours)) && Number(med.minGapHours) >= 0 ? Number(med.minGapHours) : 0;
+            }
             dom.medForm.weeklyDays.value = Array.isArray(med.weeklyDays) ? med.weeklyDays.join(",") : "";
             dom.medForm.barcode.value = med.barcode || "";
             dom.medForm.notes.value = med.notes || "";

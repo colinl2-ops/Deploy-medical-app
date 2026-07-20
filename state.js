@@ -420,7 +420,18 @@
 
     const doseId = function(medId, dateKey, time) { return `${medId}|${dateKey}|${time}`; };
 
+    function prnMinGapHours(med) {
+      const explicitGap = Number(med?.minGapHours);
+      if (Number.isFinite(explicitGap) && explicitGap >= 0) {
+        return explicitGap;
+      }
+      return 0;
+    }
+
     function minHoursBetweenDoses(med) {
+      if (med.frequency === "asRequired") {
+        return prnMinGapHours(med);
+      }
       const dailyNeed = pillsNeededPerDay(med);
       if (dailyNeed <= 0) {
         return 24;
@@ -451,7 +462,11 @@
     function lastTakenForMed(state, medId) {
       return state.doses
         .filter((dose) => dose.medId === medId && dose.status === "taken" && dose.timestamp)
-        .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))[0];
+        .sort((a, b) => {
+          const entryTimeA = String(a.loggedAt || a.createdAt || a.timestamp || "");
+          const entryTimeB = String(b.loggedAt || b.createdAt || b.timestamp || "");
+          return entryTimeB.localeCompare(entryTimeA);
+        })[0];
     }
 
     function createDueDosesForDate(state, date, context = {}) {
@@ -493,12 +508,19 @@
       return all.sort((a, b) => a.time.localeCompare(b.time));
     }
 
-    const logPrnDose = function(state, med) {
-      const todayKey = helpers.toDateKey(new Date());
-      const now = new Date();
-      const time = now.toTimeString().slice(0,5);
-      const id = `${med.id}|${todayKey}|prn-${now.getTime()}`;
-      const dose = { id, profileId: state.activeProfileId, medId: med.id, dateKey: todayKey, time, status: 'taken', snoozedUntil: null, timestamp: now.toISOString() };
+    const logPrnDose = function(state, med, context = {}) {
+      const rawMinutesAgo = Number(context.minutesAgo);
+      const minutesAgo = Number.isFinite(rawMinutesAgo) && rawMinutesAgo > 0 ? rawMinutesAgo : 0;
+      const loggedAtValue = context.loggedAt ? new Date(context.loggedAt) : new Date();
+      const timestampValue = context.timestamp ? new Date(context.timestamp) : new Date(Date.now() - minutesAgo * 60 * 1000);
+      const takenAt = Number.isNaN(timestampValue.getTime()) ? new Date() : timestampValue;
+      const loggedAt = Number.isNaN(loggedAtValue.getTime()) ? new Date() : loggedAtValue;
+      const dateKey = helpers.toDateKey(takenAt);
+      const time = takenAt.toTimeString().slice(0, 5);
+      const id = `${med.id}|${dateKey}|prn-${takenAt.getTime()}`;
+      const takenAtIso = takenAt.toISOString();
+      const loggedAtIso = loggedAt.toISOString();
+      const dose = { id, profileId: state.activeProfileId, medId: med.id, dateKey, time, status: 'taken', snoozedUntil: null, timestamp: takenAtIso, loggedAt: loggedAtIso };
       state.doses.push(dose);
       med.stock = Math.max(0, Number(med.stock) - getDoseQuantityForTime(med, time));
       saveState(state);
@@ -715,6 +737,9 @@
             : (FREQ_LABELS[med.frequency] || "Daily");
           lines.push(`   Schedule : ${freqExport}  -  ${times}`);
           lines.push(`   Dose plan: ${formatDosePlan(med, profile.timingPresets)}`);
+          if (med.frequency === "asRequired") {
+            lines.push(`   PRN gap  : ${prnMinGapHours(med)} hour(s)`);
+          }
           lines.push(`   Repeats  : ${repeatsCount(med)}`);
           lines.push(`   Food     : ${FOOD_LABELS[med.foodRule] || med.foodRule || "No special requirement"}`);
           if (med.notes) lines.push(`   Notes    : ${med.notes}`);
@@ -1140,9 +1165,9 @@
 
 // If running under Node (tests), also export `createStateApi` for require()
 try {
-  if (typeof module !== 'undefined' && module.exports && typeof createStateApi !== 'undefined') {
+  if (typeof module !== 'undefined' && module.exports && typeof globalThis !== 'undefined' && globalThis.createStateApi) {
     module.exports = module.exports || {};
-    module.exports.createStateApi = createStateApi;
+    module.exports.createStateApi = globalThis.createStateApi;
   }
 } catch (e) {
   // ignore in browsers

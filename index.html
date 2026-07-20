@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
-    <link rel="stylesheet" href="styles.css?v=20260719-174100" />
+    <link rel="stylesheet" href="styles.css?v=20260720-130320" />
     <title>Medication Helper</title>
   </head>
   <body>
@@ -113,7 +113,7 @@
         <p class="summary">Includes photo, schedule complexity, stock count, and safety checks.</p>
         <div id="medFormToolbar" class="med-form-toolbar">
           <div class="button-row full med-form-actions">
-            <button id="medSubmitBtn" class="primary-btn" type="submit">Save Medication</button>
+            <button id="medSubmitBtn" class="primary-btn" type="submit" form="medForm">Save Medication</button>
             <button id="medCancelEditBtn" class="secondary-btn hidden" type="button">Abandon Changes</button>
             <span id="medSaveSpinner" class="spinner hidden" aria-hidden="true">Saving…</span>
           </div>
@@ -172,6 +172,10 @@
               <option value="weekly">Weekly</option>
               <option value="asRequired">As required (when needed)</option>
             </select>
+          </label>
+          <label id="minGapHoursRow" class="hidden">
+            Minimum gap between doses (hours, PRN only)
+            <input name="minGapHours" type="number" min="0" step="0.5" value="0" placeholder="0" />
           </label>
           <label>
             <div class="required-row timing-picker-row">
@@ -334,6 +338,19 @@
       </div>
     </dialog>
 
+    <dialog id="prnLogDialog" aria-label="Log as-required medication">
+      <h2 id="prnLogTitle">Log PRN dose</h2>
+      <p id="prnLogHint">Enter how many minutes ago you took the medication.</p>
+      <label>
+        Minutes ago
+        <input id="prnMinutesAgoInput" type="number" min="0" step="1" value="0" />
+      </label>
+      <div class="button-row">
+        <button id="prnLogCancelBtn" class="secondary-btn" type="button">Cancel</button>
+        <button id="prnLogConfirmBtn" class="primary-btn" type="button">Log Dose</button>
+      </div>
+    </dialog>
+
     <div id="storageWarning" class="warn-text hidden" role="alert" aria-live="polite"></div>
 
     <section id="alarmOverlay" class="alarm-overlay hidden" aria-live="assertive" aria-hidden="true" style="display: none !important;">
@@ -399,9 +416,9 @@
       </article>
     </template>
 
-    <script src="state.js?v=20260719-172918" defer></script>
-    <script src="forms.js?v=20260719-172918" defer></script>
-    <script src="renderer.js?v=20260719-172918" defer></script>
-    <script src="app.js?v=20260719-174100" defer></script>
+    <script src="state.js?v=20260720-130320" defer></script>
+    <script src="forms.js?v=20260720-130320" defer></script>
+    <script src="renderer.js?v=20260720-130320" defer></script>
+    <script src="app.js?v=20260720-130320" defer></script>
   </body>
 </html>

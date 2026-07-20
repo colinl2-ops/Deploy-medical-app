@@ -104,6 +104,7 @@
       const frequency = String(formData.get("frequency") || "daily");
       const isPrn = frequency === "asRequired";
       const pillsPerDose = Number(formData.get("pillsPerDose") || 1);
+      const minGapHours = isPrn ? Number(formData.get("minGapHours") || 0) : null;
 
       // Fix A: silently drop dose plan entries for times no longer scheduled
       Object.keys(parsedDosePlan).forEach((time) => {
@@ -136,6 +137,7 @@
         dosePlan: parsedDosePlan,
         foodRule: String(formData.get("foodRule") || "none"),
         frequency: frequency,
+        minGapHours: Number.isFinite(minGapHours) ? Math.max(0, minGapHours) : null,
         weeklyDays: parseWeeklyDays(formData.get("weeklyDays")),
         barcode: String(formData.get("barcode") || "").trim(),
         notes: String(formData.get("notes") || "").trim(),
@@ -175,6 +177,7 @@
         if (preview) preview.src = med.photoDataUrl || 'icons/icon-192.svg';
       } catch (e) {}
       resetMedicationEditMode();
+      dom.safetyMessage.textContent = safetyWarning || "";
       flashMedicationSaved(dom, existingMed ? "Changes Saved" : "Medication Saved");
       renderAll();
       } finally {

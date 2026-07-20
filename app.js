@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260719-174100";
-const APP_RELEASE_LABEL = "Flag 28";
+const APP_BUILD = "20260720-130320";
+const APP_RELEASE_LABEL = "Flag 29";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -54,6 +54,12 @@ const dom = {
   medicalCardText: byId("medicalCardText"),
   emergencyCallLink: byId("emergencyCallLink"),
   closeEmergencyBtn: byId("closeEmergencyBtn"),
+  prnLogDialog: byId("prnLogDialog"),
+  prnLogTitle: byId("prnLogTitle"),
+  prnLogHint: byId("prnLogHint"),
+  prnMinutesAgoInput: byId("prnMinutesAgoInput"),
+  prnLogCancelBtn: byId("prnLogCancelBtn"),
+  prnLogConfirmBtn: byId("prnLogConfirmBtn"),
   alarmOverlay: byId("alarmOverlay"),
   alarmTitle: byId("alarmTitle"),
   alarmMessage: byId("alarmMessage"),
@@ -126,6 +132,7 @@ let editingProcedureId = null;
 let medicationFormIsDirty = false;
 let medicationFormSyncing = false;
 let medicationStatusTimeoutId = null;
+let pendingPrnLogMedication = null;
 
 function medicationFormHasPendingChanges() {
   return medicationFormIsDirty || editingMedicationId !== null;
@@ -597,9 +604,46 @@ function untakeDose(dose) {
 }
 
 function logPrnDose(med) {
-  const dose = stateApi.logPrnDose(state, med);
+  pendingPrnLogMedication = med;
+  if (dom.prnLogTitle) {
+    dom.prnLogTitle.textContent = `Log ${med.name}`;
+  }
+  if (dom.prnLogHint) {
+    dom.prnLogHint.textContent = `Enter how many minutes ago you took ${med.name}.`;
+  }
+  if (dom.prnMinutesAgoInput) {
+    dom.prnMinutesAgoInput.value = "0";
+    dom.prnMinutesAgoInput.focus();
+    dom.prnMinutesAgoInput.select();
+  }
+  if (dom.prnLogDialog && typeof dom.prnLogDialog.showModal === "function") {
+    dom.prnLogDialog.showModal();
+    return;
+  }
+
+  dom.safetyMessage.textContent = "Unable to open the PRN log dialog.";
+}
+
+function submitPrnLogDose() {
+  const med = pendingPrnLogMedication;
+  if (!med) {
+    return;
+  }
+
+  const minutesAgo = Number(String(dom.prnMinutesAgoInput?.value || "0").trim());
+  if (!Number.isFinite(minutesAgo) || minutesAgo < 0) {
+    dom.safetyMessage.textContent = "Please enter a valid number of minutes ago, or cancel.";
+    dom.prnMinutesAgoInput?.focus();
+    return;
+  }
+
+  const dose = stateApi.logPrnDose(state, med, { minutesAgo });
+  pendingPrnLogMedication = null;
+  dom.prnLogDialog?.close();
   renderAll();
-  dom.safetyMessage.textContent = `Logged ${med.name} at ${dose.time}.`;
+  dom.safetyMessage.textContent = minutesAgo > 0
+    ? `Logged ${med.name} ${minutesAgo} minute${minutesAgo === 1 ? "" : "s"} ago at ${dose.time}.`
+    : `Logged ${med.name} at ${dose.time}.`;
 }
 
 function overduePendingDoses() {
@@ -790,6 +834,8 @@ function renderMeds(meds) {
     openMedicationFormCard,
     refreshMedicationSubmitState: updateMedicationSubmitState,
     logPrnDose,
+    lastTakenForMed,
+    minHoursBetweenDoses,
     state,
     saveState,
     renderAll
@@ -854,6 +900,19 @@ function medicationValidationState(form) {
       }
     }
   });
+
+  if (String(form.frequency?.value || "").trim() === "asRequired") {
+    const gapField = form.minGapHours;
+    const gapHours = Number(gapField?.value);
+    if (gapField && String(gapField.value || "").trim() !== "" && (!Number.isFinite(gapHours) || gapHours < 0)) {
+      if (!firstInvalidField) {
+        firstInvalidField = gapField;
+      }
+      if (!missingFields.includes("Minimum gap between doses")) {
+        missingFields.push("Minimum gap between doses");
+      }
+    }
+  }
 
   return { valid: missingFields.length === 0, missingFields, firstInvalidField };
 }
@@ -1408,6 +1467,7 @@ function bindCardToggleDelegation() {
       return;
     }
     toggle.setAttribute('aria-expanded', String(!collapsed));
+    renderAll();
   });
 }
 
@@ -1425,6 +1485,7 @@ function attachPerToggleListeners() {
         return;
       }
       toggle.setAttribute('aria-expanded', String(!collapsed));
+      renderAll();
     });
     toggle.dataset.toggleListener = 'true';
   });
@@ -1469,6 +1530,8 @@ function bindEvents() {
   function syncTimesRequirement() {
     const freqField = dom.medForm?.frequency;
     const timesField = dom.medForm?.times;
+    const gapField = dom.medForm?.minGapHours;
+    const gapRow = gapField?.closest("label");
     if (!freqField || !timesField) {
       return;
     }
@@ -1498,6 +1561,14 @@ function bindEvents() {
           chip.textContent = "Required";
           chipHost.insertBefore(chip, chipHost.firstChild);
         }
+      }
+    }
+
+    if (gapField) {
+      if (isPrn) {
+        gapRow?.classList.remove("hidden");
+      } else {
+        gapRow?.classList.add("hidden");
       }
     }
 
@@ -1916,6 +1987,20 @@ function bindEvents() {
   });
   dom.emergencyBtn.addEventListener("click", () => dom.emergencyDialog.showModal());
   dom.closeEmergencyBtn.addEventListener("click", () => dom.emergencyDialog.close());
+  dom.prnLogCancelBtn?.addEventListener("click", () => {
+    pendingPrnLogMedication = null;
+    dom.prnLogDialog?.close();
+  });
+  dom.prnLogConfirmBtn?.addEventListener("click", submitPrnLogDose);
+  dom.prnLogDialog?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submitPrnLogDose();
+    }
+  });
+  dom.prnLogDialog?.addEventListener("close", () => {
+    pendingPrnLogMedication = null;
+  });
 
   window.addEventListener("beforeunload", (event) => {
     if (!medicationFormHasPendingChanges()) {
