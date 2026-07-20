@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260720-133029";
-const APP_RELEASE_LABEL = "Flag 32";
+const APP_BUILD = "20260720-133402";
+const APP_RELEASE_LABEL = "Flag 33";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -290,6 +290,7 @@ function medicationSearchMatches(query) {
 function closeMedicationSearch(message = "") {
   dom.searchMedForm?.classList.add("hidden");
   if (dom.searchMedInput) {
+    dom.searchMedInput.blur?.();
     dom.searchMedInput.value = "";
   }
   if (dom.searchMedStatus) {
@@ -322,8 +323,11 @@ function resolveMedicationSearch() {
 
   const matches = medicationSearchMatches(query);
   if (matches.length === 1) {
-    rendererApi.jumpToMedication(matches[0].id, { behavior: "auto", scrollDelay: 0 });
-    closeMedicationSearch(`Showing ${matches[0].name}.`);
+    const matchedMed = matches[0];
+    closeMedicationSearch(`Showing ${matchedMed.name}.`);
+    window.setTimeout(() => {
+      rendererApi.jumpToMedication(matchedMed.id, { behavior: "auto", scrollDelay: 0 });
+    }, 220);
     return;
   }
 
