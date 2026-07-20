@@ -710,6 +710,21 @@ button:disabled {
   font-weight: 700;
 }
 
+.quick-search-results {
+  display: grid;
+  gap: 0.4rem;
+  flex-basis: 100%;
+}
+
+.search-result-btn {
+  width: 100%;
+  justify-content: flex-start;
+  border: 2px solid #9ec8d4;
+  background: #e9f3f7;
+  color: var(--primary);
+  text-align: left;
+}
+
 .alarm-overlay {
   position: fixed;
   inset: 0;

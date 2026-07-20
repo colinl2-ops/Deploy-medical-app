@@ -164,17 +164,19 @@
       const behavior = options.behavior || "smooth";
       const scrollDelay = Number.isFinite(Number(options.scrollDelay)) ? Number(options.scrollDelay) : 50;
       const prioritize = Boolean(options.prioritize);
-      const card = document.getElementById(`med-card-${medId}`);
+      let card = document.getElementById(`med-card-${medId}`);
       if (!card) return;
-
-      if (prioritize && card.parentElement?.firstElementChild !== card) {
-        card.parentElement.prepend(card);
-      }
 
       const sectionCard = card.closest("section.card");
       const toggle = sectionCard?.querySelector(".card-toggle");
       if (sectionCard && sectionCard.classList.contains("is-collapsed") && toggle) {
         toggle.click();
+        card = document.getElementById(`med-card-${medId}`);
+        if (!card) return;
+      }
+
+      if (prioritize && card.parentElement?.firstElementChild !== card) {
+        card.parentElement.prepend(card);
       }
 
       const doJump = () => {
