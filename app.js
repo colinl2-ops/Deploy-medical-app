@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260720-131822";
-const APP_RELEASE_LABEL = "Flag 30";
+const APP_BUILD = "20260720-132515";
+const APP_RELEASE_LABEL = "Flag 31";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -132,6 +132,7 @@ let editingProcedureId = null;
 let medicationFormIsDirty = false;
 let medicationFormSyncing = false;
 let medicationStatusTimeoutId = null;
+let medicationFormJumpTimeoutId = null;
 let pendingPrnLogMedication = null;
 
 function medicationFormHasPendingChanges() {
@@ -174,6 +175,36 @@ function clearMedicationSavedStatus() {
   dom.medSavedFlag.textContent = "";
   dom.medSavedFlag.classList.add("hidden");
   dom.medSavedFlag.classList.remove("visible");
+}
+
+function cancelMedicationFormJump() {
+  if (medicationFormJumpTimeoutId) {
+    clearTimeout(medicationFormJumpTimeoutId);
+    medicationFormJumpTimeoutId = null;
+  }
+}
+
+function scheduleMedicationFormJump(target) {
+  cancelMedicationFormJump();
+  medicationFormJumpTimeoutId = window.setTimeout(() => {
+    medicationFormJumpTimeoutId = null;
+    const resolvedTarget = target || document.getElementById("medFormTarget") || dom.medForm?.closest("section.card") || dom.medForm;
+    if (!resolvedTarget) {
+      return;
+    }
+
+    const targetTop = resolvedTarget.getBoundingClientRect().top + window.pageYOffset;
+    const scrollTop = Math.max(0, targetTop - 12);
+    if (resolvedTarget.id) {
+      window.location.hash = resolvedTarget.id;
+    }
+    resolvedTarget.focus?.({ preventScroll: true });
+    const scroller = document.scrollingElement || document.documentElement || document.body;
+    if (scroller && typeof scroller.scrollTo === "function") {
+      scroller.scrollTo({ top: scrollTop, behavior: "auto" });
+    }
+    window.scrollTo(0, scrollTop);
+  }, 50);
 }
 
 function clearMedicationFormPreview() {
@@ -270,6 +301,7 @@ function closeMedicationSearch(message = "") {
 }
 
 function openMedicationSearch() {
+  cancelMedicationFormJump();
   dom.searchMedForm?.classList.remove("hidden");
   if (dom.searchMedStatus) {
     dom.searchMedStatus.textContent = "Type a medication name.";
@@ -278,6 +310,7 @@ function openMedicationSearch() {
 }
 
 function resolveMedicationSearch() {
+  cancelMedicationFormJump();
   const query = dom.searchMedInput?.value || "";
   const normalizedQuery = normalizedSearchText(query);
   if (!normalizedQuery) {
@@ -823,6 +856,8 @@ function renderMeds(meds) {
       setMedicationFormDirty(false);
     },
     clearMedicationSavedStatus,
+    cancelMedicationFormJump,
+    scheduleMedicationFormJump,
     setEditingMedicationId: (id) => {
       editingMedicationId = id;
     },
@@ -2163,6 +2198,8 @@ window.__medicationFormTestApi = {
   switchUser,
   getActiveProfileId: () => state.activeProfileId,
   clearMedicationSavedStatus,
+  cancelMedicationFormJump,
+  scheduleMedicationFormJump,
   setEditingMedicationId: (id) => {
     editingMedicationId = id;
   }

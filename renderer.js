@@ -199,6 +199,7 @@
         toDateKey,
         openMedicationFormCard,
         refreshMedicationSubmitState,
+        scheduleMedicationFormJump,
         logPrnDose,
         lastTakenForMed,
         minHoursBetweenDoses,
@@ -308,7 +309,6 @@
             dom.medForm.notes.value = med.notes || "";
             dom.medForm.form.value = med.form || "tablet";
 
-            // Set photo preview and remove flag
             try {
               const preview = document.getElementById('photoPreview');
               if (preview) preview.src = med.photoDataUrl || 'icons/icon-192.svg';
@@ -335,21 +335,25 @@
           }
           dom.safetyMessage.textContent = `Editing ${med.name}. Update fields and click Save Changes.`;
           const jumpTarget = openMedicationFormCard();
-          setTimeout(() => {
-            const target = jumpTarget || document.getElementById("medFormTarget") || dom.medForm.closest("section.card") || dom.medForm;
-            const targetTop = target.getBoundingClientRect().top + window.pageYOffset;
-            const scrollTop = Math.max(0, targetTop - 12);
-            if (target.id) {
-              window.location.hash = target.id;
-            }
-            target.focus?.({ preventScroll: true });
-            const scroller = document.scrollingElement || document.documentElement || document.body;
-            if (scroller && typeof scroller.scrollTo === "function") {
-              scroller.scrollTo({ top: scrollTop, behavior: "auto" });
-            }
-            window.scrollTo(0, scrollTop);
-            dom.medForm.name?.focus?.({ preventScroll: true });
-          }, 100);
+          if (typeof scheduleMedicationFormJump === "function") {
+            scheduleMedicationFormJump(jumpTarget);
+          } else {
+            setTimeout(() => {
+              const target = jumpTarget || document.getElementById("medFormTarget") || dom.medForm.closest("section.card") || dom.medForm;
+              const targetTop = target.getBoundingClientRect().top + window.pageYOffset;
+              const scrollTop = Math.max(0, targetTop - 12);
+              if (target.id) {
+                window.location.hash = target.id;
+              }
+              target.focus?.({ preventScroll: true });
+              const scroller = document.scrollingElement || document.documentElement || document.body;
+              if (scroller && typeof scroller.scrollTo === "function") {
+                scroller.scrollTo({ top: scrollTop, behavior: "auto" });
+              }
+              window.scrollTo(0, scrollTop);
+              dom.medForm.name?.focus?.({ preventScroll: true });
+            }, 100);
+          }
         });
 
         const prnBtn = node.querySelector(".log-prn-btn");
