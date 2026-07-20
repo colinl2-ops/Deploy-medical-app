@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260720-133402";
-const APP_RELEASE_LABEL = "Flag 33";
+const APP_BUILD = "20260720-133753";
+const APP_RELEASE_LABEL = "Flag 34";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -326,7 +326,7 @@ function resolveMedicationSearch() {
     const matchedMed = matches[0];
     closeMedicationSearch(`Showing ${matchedMed.name}.`);
     window.setTimeout(() => {
-      rendererApi.jumpToMedication(matchedMed.id, { behavior: "auto", scrollDelay: 0 });
+      rendererApi.jumpToMedication(matchedMed.id, { behavior: "auto", scrollDelay: 0, prioritize: true });
     }, 220);
     return;
   }
