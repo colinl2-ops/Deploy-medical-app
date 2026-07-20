@@ -970,12 +970,24 @@
       if (dosesForExport.length === 0) dosesForExport = fallbackDoses.filter((dose) => visibleMedIds.has(dose.medId));
       if (dosesForExport.length === 0 && visibleMeds.length > 0) {
         visibleMeds.forEach((med) => {
-          rows.push(`${dateKey},${(med.times && med.times[0]) || ""},${med.name},planned,`);
+          rows.push([
+            escapeCsvField(dateKey),
+            escapeCsvField((med.times && med.times[0]) || ""),
+            escapeCsvField(med.name),
+            escapeCsvField("planned"),
+            escapeCsvField("")
+          ].join(","));
         });
       } else {
         dosesForExport.forEach((dose) => {
           const med = findMedById(dose.medId);
-          rows.push(`${dose.dateKey},${dose.time},${med ? med.name : "Unknown"},${dose.status},${dose.timestamp || ""}`);
+          rows.push([
+            escapeCsvField(dose.dateKey),
+            escapeCsvField(dose.time),
+            escapeCsvField(med ? med.name : "Unknown"),
+            escapeCsvField(dose.status),
+            escapeCsvField(dose.timestamp || "")
+          ].join(","));
         });
       }
       return rows;
@@ -1048,6 +1060,11 @@
       if (/^\d{4}$/.test(value)) return `${value}-00-00`;
       return "0000-00-00";
     };
+
+    function escapeCsvField(value) {
+      const text = String(value ?? "");
+      return `"${text.replace(/"/g, '""')}"`;
+    }
 
     function recoverProfileMedicationVisibility(state, context) {
       const { getActiveProfile, saveState } = context;

@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260720-134632";
-const APP_RELEASE_LABEL = "Flag 36";
+const APP_BUILD = "20260721-090045";
+const APP_RELEASE_LABEL = "Flag 38";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -439,7 +439,10 @@ function proceduresForActiveProfile() {
 }
 
 function toDateKey(date) {
-  return date.toISOString().slice(0, 10);
+  const localYear = date.getFullYear();
+  const localMonth = String(date.getMonth() + 1).padStart(2, '0');
+  const localDay = String(date.getDate()).padStart(2, '0');
+  return `${localYear}-${localMonth}-${localDay}`;
 }
 
 function parseDosePlan(raw) {
