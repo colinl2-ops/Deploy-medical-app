@@ -160,7 +160,9 @@
       });
     }
 
-    function jumpToMedication(medId) {
+    function jumpToMedication(medId, options = {}) {
+      const behavior = options.behavior || "smooth";
+      const scrollDelay = Number.isFinite(Number(options.scrollDelay)) ? Number(options.scrollDelay) : 50;
       const card = document.getElementById(`med-card-${medId}`);
       if (!card) return;
 
@@ -170,11 +172,28 @@
         toggle.click();
       }
 
-      setTimeout(() => {
-        card.scrollIntoView({ behavior: "smooth", block: "center" });
+      const doJump = () => {
+        if (behavior === "auto") {
+          const targetTop = card.getBoundingClientRect().top + window.pageYOffset;
+          const scrollTop = Math.max(0, targetTop - 12);
+          const scroller = document.scrollingElement || document.documentElement || document.body;
+          if (scroller && typeof scroller.scrollTo === "function") {
+            scroller.scrollTo({ top: scrollTop, behavior: "auto" });
+          }
+          window.scrollTo(0, scrollTop);
+        } else {
+          card.scrollIntoView({ behavior, block: "center" });
+        }
         card.classList.add("highlighted");
         setTimeout(() => card.classList.remove("highlighted"), 1500);
-      }, 50);
+      };
+
+      if (scrollDelay <= 0) {
+        doJump();
+        return;
+      }
+
+      setTimeout(doJump, scrollDelay);
     }
 
     function renderMeds(meds, context) {
