@@ -229,6 +229,7 @@
         logPrnDose,
         lastTakenForMed,
         minHoursBetweenDoses,
+        toggleMedicationStatus,
         state,
         saveState,
         renderAll
@@ -261,6 +262,10 @@
         photoImg.src = med.photoDataUrl || "icons/icon-192.svg";
         photoImg.dataset.medId = med.id;
         node.querySelector(".med-name").textContent = `${med.name} ${med.strength}`;
+        const statusText = node.querySelector(".med-status");
+        if (statusText) {
+          statusText.textContent = `Status: ${med.status === "stopped" ? "Stopped" : "Active"}`;
+        }
         node.querySelector(".med-purpose").textContent = `For: ${med.purpose}`;
 
         const timesText = med.frequency === "asRequired"
@@ -383,9 +388,20 @@
         });
 
         const prnBtn = node.querySelector(".log-prn-btn");
-        if (med.frequency === "asRequired") {
+        const statusBtn = node.querySelector(".status-btn");
+        if (statusBtn) {
+          statusBtn.textContent = med.status === "stopped" ? "Resume" : "Mark Stopped";
+          if (typeof toggleMedicationStatus === "function") {
+            statusBtn.addEventListener("click", () => toggleMedicationStatus(med));
+          } else {
+            statusBtn.disabled = true;
+          }
+        }
+        if (med.frequency === "asRequired" && med.status !== "stopped") {
           prnBtn.classList.remove("hidden");
           prnBtn.addEventListener("click", () => logPrnDose(med));
+        } else {
+          prnBtn.classList.add("hidden");
         }
 
         node.querySelector(".danger-btn").addEventListener("click", () => {

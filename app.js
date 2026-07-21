@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260721-091955";
-const APP_RELEASE_LABEL = "Flag 39";
+const APP_BUILD = "20260721-132946";
+const APP_RELEASE_LABEL = "Flag 40";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -432,6 +432,13 @@ function getActiveProfile() {
 
 function medsForActiveProfile() {
   return stateApi.medsForActiveProfile(state);
+}
+
+function activeMedsForActiveProfile() {
+  if (typeof stateApi.activeMedsForActiveProfile === "function") {
+    return stateApi.activeMedsForActiveProfile(state);
+  }
+  return medsForActiveProfile().filter((med) => med.status !== "stopped");
 }
 
 function proceduresForActiveProfile() {
@@ -907,10 +914,24 @@ function renderMeds(meds) {
     logPrnDose,
     lastTakenForMed,
     minHoursBetweenDoses,
+    toggleMedicationStatus,
     state,
     saveState,
     renderAll
   });
+}
+
+function toggleMedicationStatus(med) {
+  if (!med) {
+    return;
+  }
+
+  med.status = med.status === "stopped" ? "active" : "stopped";
+  saveState();
+  renderAll();
+  dom.safetyMessage.textContent = med.status === "stopped"
+    ? `${med.name} marked as Stopped. It stays in the Medication List but is hidden from reminders and the Emergency Card.`
+    : `${med.name} reactivated.`;
 }
 
 function medicationRequiredFieldsComplete(form) {
@@ -1271,7 +1292,7 @@ function emergencyDoseAbbrev(med) {
 
 function updateMedicalCard() {
   const profile = getActiveProfile();
-  const meds = medsForActiveProfile();
+  const meds = activeMedsForActiveProfile();
   dom.medicalCardText.textContent = stateApi.buildMedicalCardText(profile, meds);
   dom.emergencyCallLink.href = profile.emergencyPhone ? `tel:${profile.emergencyPhone}` : "#";
 }
@@ -1284,20 +1305,22 @@ function recoverProfileMedicationVisibility() {
 }
 
 function renderAll() {
+  const activeMeds = activeMedsForActiveProfile();
+  const allMeds = medsForActiveProfile();
   rendererApi.renderAll({
     recoverProfileMedicationVisibility,
     state,
     enablePopupReminders: ENABLE_POPUP_REMINDERS,
     hideAlarm,
-    medsForActiveProfile,
+    medsForActiveProfile: activeMedsForActiveProfile,
     createDueDosesForDate,
-    renderRunningOut,
-    renderOrderPriority,
-    renderMeds,
+    renderRunningOut: () => renderRunningOut(activeMeds),
+    renderOrderPriority: () => renderOrderPriority(activeMeds),
+    renderMeds: () => renderMeds(allMeds),
     renderProcedures,
-    renderTimeline,
+    renderTimeline: (todayDoses, meds) => renderTimeline(todayDoses, activeMeds),
     renderAdherence,
-    maybeNotifyRefill,
+    maybeNotifyRefill: () => maybeNotifyRefill(activeMeds),
     syncProfileForm,
     updateMedicalCard
   });

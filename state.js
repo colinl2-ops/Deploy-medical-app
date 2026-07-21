@@ -180,7 +180,11 @@
         timingPresets: normalizeTimingPresets(profile.timingPresets)
       }));
       const resolvedActiveProfileId = profiles.some((profile) => profile.id === parsed.activeProfileId) ? parsed.activeProfileId : profiles[0].id;
-      const migratedMeds = (parsed.medications || []).map((med) => ({ ...med, profileId: med.profileId || resolvedActiveProfileId }));
+      const migratedMeds = (parsed.medications || []).map((med) => ({
+        ...med,
+        profileId: med.profileId || resolvedActiveProfileId,
+        status: med.status === "stopped" ? "stopped" : "active"
+      }));
       const migratedDoses = (parsed.doses || []).map((dose) => normalizeDoseDateKey({ ...dose, profileId: dose.profileId || resolvedActiveProfileId }));
       const migratedProcedures = (parsed.procedures || []).map((procedure) => ({ ...procedure, profileId: procedure.profileId || resolvedActiveProfileId }));
       return { profiles, activeProfileId: resolvedActiveProfileId, medications: migratedMeds, procedures: migratedProcedures, doses: migratedDoses, settings: parsed.settings || { highContrast: false } };
@@ -189,13 +193,13 @@
     const recoverLegacyMedications = function(activeProfileId) {
       const legacy = helpers.parseJSON(localStorage.getItem(keys.LEGACY_MED_LIST_KEY) || "null");
       if (!Array.isArray(legacy) || legacy.length === 0) return [];
-      return legacy.map((item) => ({ id: item.id || helpers.makeId(), profileId: activeProfileId, name: item.name || "Medication", strength: item.dose || "", purpose: "Imported from older app", stock: 0, pillsPerDose: 1, form: "tablet", repeats: 0, times: ["08:00"], foodRule: "none", frequency: "daily", weeklyDays: [], barcode: "", notes: item.notes || "", startDate: helpers.toDateKey(new Date()), photoDataUrl: "" }));
+      return legacy.map((item) => ({ id: item.id || helpers.makeId(), profileId: activeProfileId, name: item.name || "Medication", strength: item.dose || "", purpose: "Imported from older app", stock: 0, pillsPerDose: 1, form: "tablet", repeats: 0, times: ["08:00"], foodRule: "none", frequency: "daily", weeklyDays: [], barcode: "", notes: item.notes || "", startDate: helpers.toDateKey(new Date()), photoDataUrl: "", status: "active" }));
     };
 
     const recoverRetiredMedsBackup = function(activeProfileId) {
       const backup = helpers.parseJSON(localStorage.getItem(keys.LEGACY_MEDS_BACKUP_KEY) || "null");
       if (!Array.isArray(backup) || backup.length === 0) return [];
-      return backup.filter((item) => item && typeof item === "object" && item.name).map((item) => ({ id: item.id || helpers.makeId(), profileId: item.profileId || activeProfileId, name: item.name || "Medication", strength: item.strength || item.dose || "", purpose: item.purpose || "Imported from backup", stock: Number(item.stock ?? 0), pillsPerDose: Number(item.pillsPerDose ?? 1), form: item.form || "tablet", repeats: Number(item.repeats ?? 0), times: Array.isArray(item.times) && item.times.length > 0 ? item.times : ["08:00"], foodRule: item.foodRule || "none", frequency: item.frequency || "daily", weeklyDays: Array.isArray(item.weeklyDays) ? item.weeklyDays : [], barcode: item.barcode || "", notes: item.notes || "", startDate: item.startDate || helpers.toDateKey(new Date()), photoDataUrl: item.photoDataUrl || "" }));
+      return backup.filter((item) => item && typeof item === "object" && item.name).map((item) => ({ id: item.id || helpers.makeId(), profileId: item.profileId || activeProfileId, name: item.name || "Medication", strength: item.strength || item.dose || "", purpose: item.purpose || "Imported from backup", stock: Number(item.stock ?? 0), pillsPerDose: Number(item.pillsPerDose ?? 1), form: item.form || "tablet", repeats: Number(item.repeats ?? 0), times: Array.isArray(item.times) && item.times.length > 0 ? item.times : ["08:00"], foodRule: item.foodRule || "none", frequency: item.frequency || "daily", weeklyDays: Array.isArray(item.weeklyDays) ? item.weeklyDays : [], barcode: item.barcode || "", notes: item.notes || "", startDate: item.startDate || helpers.toDateKey(new Date()), photoDataUrl: item.photoDataUrl || "", status: item.status === "stopped" ? "stopped" : "active" }));
     };
 
     const finalizeLoadedState = function(loadedState) {
@@ -276,6 +280,10 @@
 
     function medsForActiveProfile(state) {
       return state.medications.filter((med) => med.profileId === state.activeProfileId);
+    }
+
+    function activeMedsForActiveProfile(state) {
+      return medsForActiveProfile(state).filter((med) => med.status !== "stopped");
     }
 
     function proceduresForActiveProfile(state) {
@@ -404,6 +412,10 @@
       return "Pending";
     };
 
+    const medicationStatusLabel = function(med) {
+      return med && med.status === "stopped" ? "Stopped" : "Active";
+    };
+
     const serializeDosePlan = function(med) {
       if (!hasDosePlan(med)) return "";
       return Object.entries(med.dosePlan)
@@ -505,6 +517,9 @@
       const doseHistoryDays = Number(context.doseHistoryDays ?? 14);
 
       meds().forEach((med) => {
+        if (med.status === "stopped") {
+          return;
+        }
         if (!includesDay(med, date)) {
           return;
         }
@@ -557,7 +572,7 @@
 
     const overduePendingDoses = function(state) {
       const todayKey = helpers.toDateKey(new Date());
-      return state.doses.filter((dose) => dose.profileId === state.activeProfileId && dose.status === 'pending' && dose.dateKey < todayKey);
+      return state.doses.filter((dose) => dose.profileId === state.activeProfileId && dose.status === 'pending' && dose.dateKey < todayKey && findMed(state, dose.medId)?.status !== "stopped");
     };
 
     const backfillRecentDoseHistory = function(state, days = 14, context = {}) {
@@ -717,6 +732,11 @@
       const sortedMeds = meds
         .map((med) => ({ med, left: daysLeft(med) }))
         .sort((a, b) => {
+          const stoppedA = a.med.status === "stopped";
+          const stoppedB = b.med.status === "stopped";
+          if (stoppedA !== stoppedB) {
+            return stoppedA ? 1 : -1;
+          }
           if (!Number.isFinite(a.left) && !Number.isFinite(b.left)) {
             return a.med.name.localeCompare(b.med.name);
           }
@@ -755,7 +775,7 @@
       } else {
         sortedMeds.forEach((med, i) => {
           lines.push("");
-          lines.push(`${i + 1}. ${med.name}${med.strength ? "  " + med.strength : ""}`);
+          lines.push(`${i + 1}. ${med.name}${med.strength ? "  " + med.strength : ""}${med.status === "stopped" ? "  [Stopped]" : ""}`);
           if (med.purpose) lines.push(`   Purpose  : ${med.purpose}`);
           const times = Array.isArray(med.times) && med.times.length > 0
             ? med.times.map((time) => formatTimeWithLabel(time, profile.timingPresets)).join(", ")
@@ -770,6 +790,9 @@
           }
           lines.push(`   Repeats  : ${repeatsCount(med)}`);
           lines.push(`   Food     : ${FOOD_LABELS[med.foodRule] || med.foodRule || "No special requirement"}`);
+          if (med.status === "stopped") {
+            lines.push("   Status   : Stopped");
+          }
           if (med.notes) lines.push(`   Notes    : ${med.notes}`);
         });
       }
@@ -823,14 +846,15 @@
 
       sortedMeds.forEach((med) => {
         const times = Array.isArray(med.times) ? med.times : [];
+        const medLabel = `${med.name}${med.strength ? ` (${med.strength})` : ""}${med.status === "stopped" ? " [Stopped]" : ""}`;
         if (times.length === 0) {
-          unsetRows.push(`- ${med.name}${med.strength ? ` (${med.strength})` : ""} - time not set`);
+          unsetRows.push(`- ${medLabel} - time not set`);
           return;
         }
 
         times.forEach((time) => {
           const minutes = toMinutes(time);
-          const doseLine = `- ${med.name}${med.strength ? ` (${med.strength})` : ""} - ${getDoseQuantityForTime(med, time)} ${doseUnit(med)}`;
+          const doseLine = `- ${medLabel} - ${getDoseQuantityForTime(med, time)} ${doseUnit(med)}`;
           const displayTime = formatTimeWithLabel(time, profile.timingPresets);
 
           if (!timeGroups.has(time)) {
@@ -901,7 +925,8 @@
         barcode: item.barcode || "",
         notes: item.notes || "",
         startDate: item.startDate || todayDateKey,
-        photoDataUrl: item.photoDataUrl || ""
+        photoDataUrl: item.photoDataUrl || "",
+        status: item.status === "stopped" ? "stopped" : "active"
       }));
 
       if (Array.isArray(parsed)) {
@@ -1138,6 +1163,7 @@
       saveState,
       getActiveProfile,
       medsForActiveProfile,
+      activeMedsForActiveProfile,
       proceduresForActiveProfile,
       parseTimes,
       parseDosePlan,
@@ -1154,6 +1180,7 @@
       formatDosePlan,
       medDisplayLine,
       statusText,
+      medicationStatusLabel,
       serializeDosePlan,
       fixMedicationDosePlan,
       pillsNeededPerDay,

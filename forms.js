@@ -142,6 +142,7 @@
         barcode: String(formData.get("barcode") || "").trim(),
         notes: String(formData.get("notes") || "").trim(),
         startDate: resolvedStartDate,
+        status: existingMed?.status === "stopped" ? "stopped" : "active",
         photoDataUrl: (removePhotoFlag ? "" : (photoDataUrl || existingMed?.photoDataUrl || ""))
       };
 
