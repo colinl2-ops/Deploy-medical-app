@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260721-132946";
-const APP_RELEASE_LABEL = "Flag 40";
+const APP_BUILD = "20260721-180226";
+const APP_RELEASE_LABEL = "Flag 41";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -646,7 +646,7 @@ function markDose(dose, status, options = {}) {
     }
 
     const previous = lastTakenForMed(med.id);
-    if (previous?.timestamp && !options.add .force) {
+    if (previous?.timestamp && !options.force) {
       const minGapMs = minHoursBetweenDoses(med) * 60 * 60 * 1000;
       const gap = new Date() - new Date(previous.timestamp);
       if (gap < minGapMs) {

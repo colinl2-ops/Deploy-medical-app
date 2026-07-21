@@ -589,7 +589,6 @@
     };
 
     const catchUpOverdueDoses = function(state, context = {}) {
-      backfillRecentDoseHistory(state, context.days ?? 14, context);
       const overdue = overduePendingDoses(state);
       if (overdue.length === 0) return 0;
       overdue.forEach((dose) => {
