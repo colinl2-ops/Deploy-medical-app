@@ -843,7 +843,7 @@
         return Number(match[1]) * 60 + Number(match[2]);
       };
 
-      sortedMeds.forEach((med) => {
+      sortedMeds.filter((med) => med.status !== "stopped").forEach((med) => {
         const times = Array.isArray(med.times) ? med.times : [];
         const medLabel = `${med.name}${med.strength ? ` (${med.strength})` : ""}${med.status === "stopped" ? " [Stopped]" : ""}`;
         if (times.length === 0) {
