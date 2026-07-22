@@ -961,6 +961,14 @@
       return null;
     }
 
+    function restoreImportedBackup(parsed, context = {}) {
+      if (parsed && typeof parsed === "object" && Number(parsed.schemaVersion) === 2 && parsed.state && typeof parsed.state === "object") {
+        return parsed.state;
+      }
+
+      return normalizeImportedBackup(parsed, context);
+    }
+
     function buildAlarmDisplayMessage(dose, med, timingPresets = []) {
       return `${formatTimeWithLabel(dose.time, timingPresets)} - ${getDoseQuantityForTime(med, dose.time)} ${doseUnit(med)}. ${friendlyFoodRule(med.foodRule)}.`;
     }
@@ -1216,6 +1224,7 @@
       profileTimingTimeForLabel,
       findPendingDueDose,
       shouldEscalateAlarmMessage,
+      restoreImportedBackup,
       forceParamState,
       forceReloadQuery,
       shouldRegisterServiceWorker,

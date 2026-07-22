@@ -5,8 +5,8 @@ const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260721-180226";
-const APP_RELEASE_LABEL = "Flag 41";
+const APP_BUILD = "20260722-115932";
+const APP_RELEASE_LABEL = "Flag 42";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -1445,11 +1445,22 @@ function exportAmPmList() {
 }
 
 function exportBackup() {
-  downloadTextFile("medication-backup.json", JSON.stringify(state, null, 2), "application/json");
+  const backup = {
+    schemaVersion: 2,
+    state
+  };
+  downloadTextFile("medication-backup.json", JSON.stringify(backup, null, 2), "application/json");
 }
 
 function normalizeImportedBackup(parsed) {
   return stateApi.normalizeImportedBackup(parsed, {
+    makeId,
+    todayDateKey: toDateKey(new Date())
+  });
+}
+
+function restoreImportedBackup(parsed) {
+  return stateApi.restoreImportedBackup(parsed, {
     makeId,
     todayDateKey: toDateKey(new Date())
   });
@@ -1462,11 +1473,11 @@ async function importBackup(file) {
   try {
     const text = await file.text();
     const parsed = JSON.parse(text);
-    const normalized = normalizeImportedBackup(parsed);
-    if (!normalized) {
+    const restored = restoreImportedBackup(parsed);
+    if (!restored) {
       throw new Error("Invalid backup file");
     }
-    state = normalized;
+    state = restored;
     saveState();
     renderAll();
     dom.safetyMessage.textContent = "Backup restored.";
