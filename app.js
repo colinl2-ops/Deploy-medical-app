@@ -6,8 +6,8 @@ const LEGACY_MED_LIST_KEY = "medications-v1";
 const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260723-085644";
-const APP_RELEASE_LABEL = "Flag 45";
+const APP_BUILD = "20260723-122407";
+const APP_RELEASE_LABEL = "Flag 46";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -82,7 +82,11 @@ const dom = {
   emergencyDialog: byId("emergencyDialog"),
   medicalCardText: byId("medicalCardText"),
   emergencyCallLink: byId("emergencyCallLink"),
+  openLockScreenCardBtn: byId("openLockScreenCardBtn"),
   closeEmergencyBtn: byId("closeEmergencyBtn"),
+  lockScreenCardDialog: byId("lockScreenCardDialog"),
+  lockScreenCardName: byId("lockScreenCardName"),
+  lockScreenCardText: byId("lockScreenCardText"),
   prnLogDialog: byId("prnLogDialog"),
   prnLogTitle: byId("prnLogTitle"),
   prnLogHint: byId("prnLogHint"),
@@ -412,6 +416,7 @@ function defaultProfile() {
   return {
     id: makeId(),
     name: "Primary User",
+    emergencyContactName: "",
     emergencyPhone: "",
     caregiverName: "",
     caregiverPhone: "",
@@ -1397,6 +1402,7 @@ function syncProfileForm() {
   const profile = getActiveProfile();
   const form = dom.profileForm;
   form.profileName.value = profile.name || "";
+  form.emergencyContactName.value = profile.emergencyContactName || "";
   form.emergencyPhone.value = profile.emergencyPhone || "";
   form.caregiverName.value = profile.caregiverName || "";
   form.caregiverPhone.value = profile.caregiverPhone || "";
@@ -1426,8 +1432,32 @@ function emergencyDoseAbbrev(med) {
 function updateMedicalCard() {
   const profile = getActiveProfile();
   const meds = activeMedsForActiveProfile();
+  const emergencyContact = [profile.emergencyContactName, profile.emergencyPhone]
+    .filter(Boolean)
+    .join(": ") || "Not recorded";
   dom.medicalCardText.textContent = stateApi.buildMedicalCardText(profile, meds);
+  dom.lockScreenCardName.textContent = profile.name || "Medical Card";
+  dom.lockScreenCardText.textContent = [
+    `Emergency contact: ${emergencyContact}`,
+    "",
+    `Blood group: ${profile.bloodGroup || "Unknown"}`,
+    `Conditions: ${profile.conditions || "None known"}`,
+    `Allergies: ${profile.allergies || "None known"}`,
+    "",
+    meds.length
+      ? `Medicines: ${meds.map((med) => `${med.frequency === "asRequired" ? "* " : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`).join("; ")}`
+      : "Medicines: None recorded"
+  ].join("\n");
   dom.emergencyCallLink.href = profile.emergencyPhone ? `tel:${profile.emergencyPhone}` : "#";
+}
+
+function fitLockScreenCardText() {
+  const text = dom.lockScreenCardText;
+  text.style.fontSize = "";
+  for (let size = 15; size >= 10; size -= 1) {
+    text.style.fontSize = `${size}px`;
+    if (text.scrollHeight <= text.clientHeight) return;
+  }
 }
 
 function recoverProfileMedicationVisibility() {
@@ -1880,6 +1910,7 @@ function bindEvents() {
   syncTimesRequirement();
 
   dom.profileForm.addEventListener("submit", (event) => {
+    getActiveProfile().emergencyContactName = String(dom.profileForm.emergencyContactName.value || "").trim();
     formsApi.handleProfileSubmit(event, {
       dom,
       getActiveProfile,
@@ -2249,6 +2280,16 @@ function bindEvents() {
   });
   dom.emergencyBtn.addEventListener("click", () => dom.emergencyDialog.showModal());
   dom.closeEmergencyBtn.addEventListener("click", () => dom.emergencyDialog.close());
+  dom.openLockScreenCardBtn.addEventListener("click", () => {
+    dom.emergencyDialog.close();
+    dom.lockScreenCardDialog.showModal();
+    fitLockScreenCardText();
+  });
+  dom.lockScreenCardDialog.addEventListener("click", (event) => {
+    if (event.target === dom.lockScreenCardDialog) {
+      dom.lockScreenCardDialog.close();
+    }
+  });
   dom.prnLogCancelBtn?.addEventListener("click", () => {
     pendingPrnLogMedication = null;
     dom.prnLogDialog?.close();

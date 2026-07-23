@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
-    <link rel="stylesheet" href="styles.css?v=20260723-085644" />
+    <link rel="stylesheet" href="styles.css?v=20260723-122407" />
     <title>Medication Helper</title>
   </head>
   <body>
@@ -61,7 +61,11 @@
             <input name="profileName" required placeholder="Example: Asha" />
           </label>
           <label>
-            Emergency contact
+            Emergency contact name
+            <input name="emergencyContactName" placeholder="Family member or helper" />
+          </label>
+          <label>
+            Emergency contact phone
             <input name="emergencyPhone" placeholder="+1..." />
           </label>
           <label>
@@ -354,8 +358,17 @@
       <p id="medicalCardText"></p>
       <div class="button-row">
         <a id="emergencyCallLink" class="primary-btn" href="#">Call Emergency Contact</a>
+        <button id="openLockScreenCardBtn" class="secondary-btn" type="button">Lock Screen Card</button>
         <button id="closeEmergencyBtn" class="secondary-btn" type="button">Close</button>
       </div>
+    </dialog>
+
+    <dialog id="lockScreenCardDialog" class="lock-screen-card-dialog" aria-label="Emergency lock screen card">
+      <article class="lock-screen-card">
+        <p class="lock-screen-card-kicker">Emergency medical information</p>
+        <h2 id="lockScreenCardName">Medical Card</h2>
+        <p id="lockScreenCardText" class="lock-screen-card-text"></p>
+      </article>
     </dialog>
 
     <dialog id="photoPreviewDialog" class="photo-dialog" aria-label="Photo preview dialog">
@@ -459,9 +472,9 @@
       </article>
     </template>
 
-    <script src="state.js?v=20260723-085644" defer></script>
-    <script src="forms.js?v=20260723-085644" defer></script>
-    <script src="renderer.js?v=20260723-085644" defer></script>
-    <script src="app.js?v=20260723-085644" defer></script>
+    <script src="state.js?v=20260723-122407" defer></script>
+    <script src="forms.js?v=20260723-122407" defer></script>
+    <script src="renderer.js?v=20260723-122407" defer></script>
+    <script src="app.js?v=20260723-122407" defer></script>
   </body>
 </html>

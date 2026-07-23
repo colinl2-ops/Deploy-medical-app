@@ -14,7 +14,7 @@
 
     const buildDefaultState = function() {
       const first = helpers.defaultProfile();
-      return { profiles: [first], activeProfileId: first.id, medications: [], procedures: [], doses: [], settings: { highContrast: false } };
+      return { profiles: [first], activeProfileId: first.id, medications: [], procedures: [], bloodPressureLogs: [], doses: [], settings: { highContrast: false } };
     };
 
     const validTimePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -173,6 +173,30 @@
       return normalized;
     }
 
+    function normalizeBloodPressureReading(entry, profileId) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return null;
+      }
+
+      const pressure = String(entry.pressure || [entry.systolic, entry.diastolic].filter(Boolean).join("/") || "").trim();
+      if (!pressure) {
+        return null;
+      }
+
+      const timestamp = entry.timestamp || entry.readingTimestamp || new Date().toISOString();
+      const pulse = String(entry.pulse || "").trim();
+      return {
+        id: entry.id || helpers.makeId(),
+        profileId: entry.profileId || profileId,
+        timestamp,
+        pressure,
+        pulse,
+        notes: String(entry.notes ?? entry.note ?? "").trim(),
+        createdAt: entry.createdAt || timestamp,
+        updatedAt: entry.updatedAt || timestamp
+      };
+    }
+
     const normalizeState = function(parsed) {
       if (!parsed || !Array.isArray(parsed.profiles) || parsed.profiles.length === 0) return null;
       const profiles = parsed.profiles.map((profile) => ({
@@ -187,7 +211,8 @@
       }));
       const migratedDoses = (parsed.doses || []).map((dose) => normalizeDoseDateKey({ ...dose, profileId: dose.profileId || resolvedActiveProfileId }));
       const migratedProcedures = (parsed.procedures || []).map((procedure) => ({ ...procedure, profileId: procedure.profileId || resolvedActiveProfileId }));
-      return { profiles, activeProfileId: resolvedActiveProfileId, medications: migratedMeds, procedures: migratedProcedures, doses: migratedDoses, settings: parsed.settings || { highContrast: false } };
+      const migratedBloodPressureLogs = (parsed.bloodPressureLogs || []).map((entry) => normalizeBloodPressureReading(entry, resolvedActiveProfileId)).filter(Boolean);
+      return { profiles, activeProfileId: resolvedActiveProfileId, medications: migratedMeds, procedures: migratedProcedures, bloodPressureLogs: migratedBloodPressureLogs, doses: migratedDoses, settings: parsed.settings || { highContrast: false } };
     };
 
     const recoverLegacyMedications = function(activeProfileId) {
@@ -265,7 +290,7 @@
           return;
         } catch (e2) {
           try {
-            const minimal = { profiles: state.profiles || [], activeProfileId: state.activeProfileId, medications: [], procedures: state.procedures || [], doses: state.doses || [], settings: state.settings || {} };
+            const minimal = { profiles: state.profiles || [], activeProfileId: state.activeProfileId, medications: [], procedures: state.procedures || [], bloodPressureLogs: state.bloodPressureLogs || [], doses: state.doses || [], settings: state.settings || {} };
             tryWrite(minimal);
           } catch (e3) {
             // Give up silently; there is nothing further we can do here.
@@ -288,6 +313,10 @@
 
     function proceduresForActiveProfile(state) {
       return state.procedures.filter((procedure) => procedure.profileId === state.activeProfileId);
+    }
+
+    function bloodPressureLogsForActiveProfile(state) {
+      return (state.bloodPressureLogs || []).filter((entry) => entry.profileId === state.activeProfileId);
     }
 
     function parseTimes(raw, timingPresets = []) {
@@ -709,7 +738,8 @@
         .map((med) => `${med.frequency === "asRequired" ? "*" : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`)
         .join(", ") || "None";
       const asRequiredNote = hasAsRequired ? " [* as needed]" : "";
-      return `${profile.name} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${medsLabel}${asRequiredNote}`;
+      const emergencyContact = [profile.emergencyContactName, profile.emergencyPhone].filter(Boolean).join(": ") || "Not recorded";
+      return `${profile.name} | Emergency contact: ${emergencyContact} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${medsLabel}${asRequiredNote}`;
     };
 
     function caregiverStatusMessage(profileName, todayDoses) {
@@ -1146,6 +1176,13 @@
         }
       });
 
+      (state.bloodPressureLogs || []).forEach((reading) => {
+        if (!reading.profileId || !profileIds.has(reading.profileId)) {
+          reading.profileId = activeId;
+          didMutate = true;
+        }
+      });
+
       if (didMutate) {
         saveState();
       }
@@ -1172,6 +1209,7 @@
       medsForActiveProfile,
       activeMedsForActiveProfile,
       proceduresForActiveProfile,
+      bloodPressureLogsForActiveProfile,
       parseTimes,
       parseDosePlan,
       parseTimingPresets: normalizeTimingPresets,

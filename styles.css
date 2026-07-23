@@ -794,6 +794,59 @@ dialog::backdrop {
   background: rgba(26, 39, 45, 0.56);
 }
 
+.lock-screen-card-dialog {
+  width: min(390px, calc(100vw - 2rem));
+  height: min(760px, calc(100dvh - 2rem));
+  max-height: calc(100dvh - 2rem);
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+  color: #102a36;
+}
+
+.lock-screen-card-dialog::backdrop {
+  background: #102a36;
+}
+
+.lock-screen-card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding: 1.25rem;
+  border: 5px solid #b42626;
+  background: #fff;
+}
+
+.lock-screen-card-kicker {
+  margin: 0 0 0.35rem;
+  color: #8e1f1f;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.lock-screen-card h2 {
+  margin: 0 0 1rem;
+  color: #102a36;
+  font-size: clamp(1.55rem, 7vw, 2rem);
+  overflow-wrap: break-word;
+}
+
+.lock-screen-card-text {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font-size: 0.94rem;
+  line-height: 1.28;
+}
+
 .file-label {
   position: relative;
   overflow: hidden;
