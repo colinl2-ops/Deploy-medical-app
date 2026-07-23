@@ -2,6 +2,12 @@
   function createRendererApi() {
     const WEEKDAY_SHORT_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+    function toDatetimeLocalValue(date) {
+      const value = date instanceof Date ? date : new Date(date);
+      const offsetMs = value.getTimezoneOffset() * 60 * 1000;
+      return new Date(value.getTime() - offsetMs).toISOString().slice(0, 16);
+    }
+
     function nextScheduledDoseWeekday(med, includesDay) {
       if (typeof includesDay !== "function") {
         return "";
@@ -84,6 +90,63 @@
         });
 
         dom.procedureList.appendChild(node);
+      });
+    }
+
+    function renderBloodPressureLogs(readings, context) {
+      const {
+        dom,
+        setEditingBloodPressureId,
+        state,
+        saveState,
+        renderAll
+      } = context;
+
+      const sortedReadings = readings.slice().sort((firstReading, secondReading) => String(secondReading.timestamp || "").localeCompare(String(firstReading.timestamp || "")));
+      dom.bpList.innerHTML = "";
+      if (sortedReadings.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "summary";
+        empty.textContent = "No blood pressure readings recorded for this user yet.";
+        dom.bpList.appendChild(empty);
+        return;
+      }
+
+      sortedReadings.forEach((reading) => {
+        const node = dom.bpTemplate.content.cloneNode(true);
+        const date = new Date(reading.timestamp);
+        const dateTime = Number.isNaN(date.getTime())
+          ? "Unknown date and time"
+          : date.toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+        const summaryParts = [dateTime, `Pressure: ${reading.pressure}`, reading.pulse ? `Pulse: ${reading.pulse}` : ""].filter(Boolean);
+        const noteText = String(reading.notes || "").trim();
+        node.querySelector(".bp-summary").textContent = noteText
+          ? `${summaryParts.join(" • ")}\n${noteText}`
+          : summaryParts.join(" • ");
+
+        node.querySelector(".bp-edit-btn").addEventListener("click", () => {
+          setEditingBloodPressureId(reading.id);
+          dom.bpForm.readingTimestamp.value = toDatetimeLocalValue(reading.timestamp);
+          dom.bpForm.pressure.value = reading.pressure || "";
+          dom.bpForm.pulse.value = reading.pulse || "";
+          dom.bpForm.notes.value = reading.notes || "";
+          dom.bpSubmitBtn.textContent = "Save Changes";
+          dom.bpCancelEditBtn.classList.remove("hidden");
+          dom.bpMessage.textContent = "Editing blood pressure reading.";
+          dom.bpForm.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+
+        node.querySelector(".bp-delete-btn").addEventListener("click", () => {
+          if (!window.confirm(`Delete blood pressure reading ${reading.pressure}?`)) {
+            return;
+          }
+          state.bloodPressureLogs = (state.bloodPressureLogs || []).filter((entry) => entry.id !== reading.id);
+          saveState();
+          dom.bpMessage.textContent = "Blood pressure reading deleted.";
+          renderAll();
+        });
+
+        dom.bpList.appendChild(node);
       });
     }
 
@@ -542,6 +605,7 @@
         renderOrderPriority,
         renderMeds,
         renderProcedures,
+        renderBloodPressureLogs,
         renderTimeline,
         renderAdherence,
         maybeNotifyRefill,
@@ -567,6 +631,7 @@
       renderOrderPriority(meds);
       renderMeds(meds);
       renderProcedures();
+      renderBloodPressureLogs();
       renderTimeline(todayDoses, meds);
       renderAdherence(todayDoses);
       maybeNotifyRefill(meds);
@@ -580,6 +645,7 @@
       renderOrderPriority,
       jumpToMedication,
       renderMeds,
+      renderBloodPressureLogs,
       renderTimeline,
       renderAdherence,
       renderAll

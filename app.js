@@ -3,10 +3,11 @@ const BACKUP_STORAGE_KEY = "med-helper-v3-backup";
 const LEGACY_MEDS_BACKUP_KEY = "med-helper-meds-v1";
 const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
+const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260722-165538";
-const APP_RELEASE_LABEL = "Flag 44";
+const APP_BUILD = "20260723-085644";
+const APP_RELEASE_LABEL = "Flag 45";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -17,6 +18,29 @@ const INTERACTION_RULES = [
 
 const byId = (id) => document.getElementById(id);
 
+function applyBloodPressureWrapStyle() {
+  const style = document.createElement("style");
+  style.textContent = `
+    .bp-summary {
+      white-space: pre-wrap !important;
+      overflow-wrap: break-word;
+      word-break: normal;
+      overflow: visible;
+      text-overflow: clip;
+    }
+    .procedure-card:has(.bp-summary) .procedure-main {
+      min-width: 0;
+    }
+    .procedure-card:has(.bp-summary) .card-actions {
+      width: auto;
+      flex: 0 0 auto;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+applyBloodPressureWrapStyle();
+
 const dom = {
   medForm: byId("medForm"),
   medTimesPresetMenu: byId("medTimesPresetMenu"),
@@ -24,9 +48,11 @@ const dom = {
   medTimesPresetButton: document.querySelector("[data-timing-picker='medTimesPresetButton']"),
   medDosePlanPresetButton: document.querySelector("[data-timing-picker='medDosePlanPresetButton']"),
   procedureForm: byId("procedureForm"),
+  bpForm: byId("bpForm"),
   profileForm: byId("profileForm"),
   medList: byId("medList"),
   procedureList: byId("procedureList"),
+  bpList: byId("bpList"),
   timeline: byId("timeline"),
   todaySummary: byId("todaySummary"),
   runningOutSummary: byId("runningOutSummary"),
@@ -38,11 +64,13 @@ const dom = {
   trendList: byId("trendList"),
   medTemplate: byId("medCardTemplate"),
   procedureTemplate: byId("procedureCardTemplate"),
+  bpTemplate: byId("bpCardTemplate"),
   timelineTemplate: byId("timelineItemTemplate"),
   installButton: byId("installAppBtn"),
   highContrastBtn: byId("highContrastBtn"),
   safetyMessage: byId("safetyMessage"),
   procedureMessage: byId("procedureMessage"),
+  bpMessage: byId("bpMessage"),
   closeAllBtn: byId("closeAllBtn"),
   searchMedBtn: byId("searchMedBtn"),
   searchMedForm: byId("searchMedForm"),
@@ -91,7 +119,9 @@ const dom = {
   medSavedFlag: byId("medSavedFlag"),
   medCancelEditBtn: byId("medCancelEditBtn"),
   procedureSubmitBtn: byId("procedureSubmitBtn"),
-  procedureCancelEditBtn: byId("procedureCancelEditBtn")
+  procedureCancelEditBtn: byId("procedureCancelEditBtn"),
+  bpSubmitBtn: byId("bpSubmitBtn"),
+  bpCancelEditBtn: byId("bpCancelEditBtn")
 };
 
 if (dom.buildInfo) {
@@ -130,6 +160,7 @@ let muteAlarmsUntilKey = null;
 let alarmCooldownUntil = 0;
 let editingMedicationId = null;
 let editingProcedureId = null;
+let editingBloodPressureId = null;
 let medicationFormIsDirty = false;
 let medicationFormSyncing = false;
 let medicationStatusTimeoutId = null;
@@ -443,6 +474,65 @@ function activeMedsForActiveProfile() {
 
 function proceduresForActiveProfile() {
   return stateApi.proceduresForActiveProfile(state);
+}
+
+function bloodPressureLogsForActiveProfile() {
+  if (typeof stateApi.bloodPressureLogsForActiveProfile === "function") {
+    return stateApi.bloodPressureLogsForActiveProfile(state);
+  }
+
+  const savedLogs = parseJSON(localStorage.getItem(BLOOD_PRESSURE_STORAGE_KEY) || "[]");
+  return Array.isArray(savedLogs) ? savedLogs.filter((entry) => entry.profileId === state.activeProfileId) : [];
+}
+
+function saveBloodPressureLogs() {
+  const savedLogs = Array.isArray(state.bloodPressureLogs) ? state.bloodPressureLogs : [];
+  localStorage.setItem(BLOOD_PRESSURE_STORAGE_KEY, JSON.stringify(savedLogs));
+}
+
+function handleBloodPressureSubmitFallback(event) {
+  event.preventDefault();
+  const formData = new FormData(dom.bpForm);
+  const timestampRaw = String(formData.get("readingTimestamp") || "").trim();
+  const pressure = String(formData.get("pressure") || "").trim();
+  const pulseRaw = String(formData.get("pulse") || "").trim();
+  const notes = String(formData.get("notes") || "").trim();
+  const timestamp = new Date(timestampRaw);
+
+  if (!timestampRaw || Number.isNaN(timestamp.getTime()) || !pressure) {
+    dom.bpMessage.textContent = "Please enter a date and time and pressure.";
+    return;
+  }
+
+  const pulse = pulseRaw === "" ? "" : Number(pulseRaw);
+  if (pulseRaw !== "" && (!Number.isFinite(pulse) || pulse <= 0)) {
+    dom.bpMessage.textContent = "Please enter a valid pulse, or leave it blank.";
+    return;
+  }
+
+  const logs = bloodPressureLogsForActiveProfile();
+  const existingReading = editingBloodPressureId ? logs.find((entry) => entry.id === editingBloodPressureId) : null;
+  const savedAt = new Date().toISOString();
+  const reading = {
+    id: existingReading?.id || makeId(),
+    profileId: existingReading?.profileId || state.activeProfileId,
+    timestamp: timestamp.toISOString(),
+    pressure,
+    pulse: pulse === "" ? "" : String(Math.round(pulse)),
+    notes,
+    createdAt: existingReading?.createdAt || savedAt,
+    updatedAt: savedAt
+  };
+
+  state.bloodPressureLogs = existingReading
+    ? logs.map((entry) => (entry.id === existingReading.id ? reading : entry))
+    : [...logs, reading];
+  saveBloodPressureLogs();
+  saveState();
+  dom.bpMessage.textContent = existingReading ? "Blood pressure reading updated." : "Blood pressure reading saved.";
+  resetBloodPressureForm();
+  resetBloodPressureEditMode();
+  renderAll();
 }
 
 function toDateKey(date) {
@@ -848,6 +938,32 @@ function resetProcedureEditMode() {
   }
 }
 
+function currentDatetimeLocalValue() {
+  const now = new Date();
+  const offsetMilliseconds = now.getTimezoneOffset() * 60 * 1000;
+  return new Date(now.getTime() - offsetMilliseconds).toISOString().slice(0, 16);
+}
+
+function resetBloodPressureForm() {
+  if (!dom.bpForm) {
+    return;
+  }
+
+  dom.bpForm.reset();
+  const timestampField = dom.bpForm.querySelector('[name="readingTimestamp"]');
+  if (timestampField) {
+    timestampField.value = currentDatetimeLocalValue();
+  }
+}
+
+function resetBloodPressureEditMode() {
+  editingBloodPressureId = null;
+  if (dom.bpSubmitBtn) {
+    dom.bpSubmitBtn.textContent = "Save Reading";
+  }
+  dom.bpCancelEditBtn?.classList.add("hidden");
+}
+
 function renderProcedures() {
   rendererApi.renderProcedures(proceduresForActiveProfile(), {
     dom,
@@ -857,6 +973,23 @@ function renderProcedures() {
     },
     state,
     saveState,
+    renderAll
+  });
+}
+
+function renderBloodPressureLogs() {
+  const logs = bloodPressureLogsForActiveProfile();
+  state.bloodPressureLogs = logs.slice();
+  rendererApi.renderBloodPressureLogs(logs, {
+    dom,
+    setEditingBloodPressureId: (id) => {
+      editingBloodPressureId = id;
+    },
+    state,
+    saveState: () => {
+      saveBloodPressureLogs();
+      saveState();
+    },
     renderAll
   });
 }
@@ -1318,6 +1451,7 @@ function renderAll() {
     renderOrderPriority: () => renderOrderPriority(activeMeds),
     renderMeds: () => renderMeds(allMeds),
     renderProcedures,
+    renderBloodPressureLogs,
     renderTimeline: (todayDoses, meds) => renderTimeline(todayDoses, activeMeds),
     renderAdherence,
     maybeNotifyRefill: () => maybeNotifyRefill(activeMeds),
@@ -2038,6 +2172,29 @@ function bindEvents() {
     dom.procedureMessage.textContent = "Edit cancelled.";
   });
 
+  dom.bpForm?.addEventListener("submit", (event) => {
+    if (typeof formsApi.handleBloodPressureSubmit !== "function") {
+      handleBloodPressureSubmitFallback(event);
+      return;
+    }
+
+    formsApi.handleBloodPressureSubmit(event, {
+      dom,
+      state,
+      editingBloodPressureId,
+      makeId,
+      saveState,
+      resetBloodPressureEditMode,
+      renderAll
+    });
+  });
+
+  dom.bpCancelEditBtn?.addEventListener("click", () => {
+    resetBloodPressureForm();
+    resetBloodPressureEditMode();
+    dom.bpMessage.textContent = "Edit cancelled.";
+  });
+
   dom.alarmTakenBtn.addEventListener("click", () => {
     resolveActiveAlarm("taken");
   });
@@ -2326,6 +2483,8 @@ if (!window.__skipAppBootstrap) {
     attachPerToggleListeners();
     bindEvents();
     resetProcedureEditMode();
+    resetBloodPressureForm();
+    resetBloodPressureEditMode();
     renderAll();
     if (ENABLE_POPUP_REMINDERS) {
       window.setInterval(checkDueAlarms, 30000);

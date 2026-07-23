@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
-    <link rel="stylesheet" href="styles.css?v=20260722-165538" />
+    <link rel="stylesheet" href="styles.css?v=20260723-085644" />
     <title>Medication Helper</title>
   </head>
   <body>
@@ -274,17 +274,6 @@
       </section>
 
       <section class="card">
-        <h2>Backup and Restore</h2>
-        <div class="button-row">
-          <button id="exportBackupBtn" class="secondary-btn" type="button">Export Backup</button>
-          <label class="file-label secondary-btn">
-            Restore Backup
-            <input id="importBackupInput" type="file" accept="application/json" />
-          </label>
-        </div>
-      </section>
-
-      <section class="card">
         <h2>Procedures</h2>
         <form id="procedureForm" class="grid-form">
           <label>
@@ -313,6 +302,45 @@
           <button id="exportProcedureCsvBtn" class="secondary-btn" type="button">Export Procedures CSV</button>
         </div>
         <div id="procedureList" class="procedure-list"></div>
+      </section>
+
+      <section class="card">
+        <h2>Blood Pressure</h2>
+        <form id="bpForm" class="grid-form">
+          <label>
+            Date and time
+            <input id="readingTimestamp" name="readingTimestamp" type="datetime-local" required />
+          </label>
+          <label>
+            Pressure
+            <input name="pressure" required placeholder="120/80" />
+          </label>
+          <label>
+            Pulse (optional)
+            <input name="pulse" type="number" min="1" step="1" placeholder="72" />
+          </label>
+          <label class="full">
+            Notes (optional)
+            <textarea name="notes" rows="3" placeholder="After breakfast, feeling calm"></textarea>
+          </label>
+          <div class="button-row full">
+            <button id="bpSubmitBtn" class="primary-btn" type="submit">Save Reading</button>
+            <button id="bpCancelEditBtn" class="secondary-btn hidden" type="button">Cancel Edit</button>
+          </div>
+        </form>
+        <p id="bpMessage" class="warn-text" aria-live="polite"></p>
+        <div id="bpList" class="procedure-list"></div>
+      </section>
+
+      <section class="card">
+        <h2>Backup and Restore</h2>
+        <div class="button-row">
+          <button id="exportBackupBtn" class="secondary-btn" type="button">Export Backup</button>
+          <label class="file-label secondary-btn">
+            Restore Backup
+            <input id="importBackupInput" type="file" accept="application/json" />
+          </label>
+        </div>
       </section>
     </main>
 
@@ -419,9 +447,21 @@
       </article>
     </template>
 
-    <script src="state.js?v=20260722-165538" defer></script>
-    <script src="forms.js?v=20260722-165538" defer></script>
-    <script src="renderer.js?v=20260722-165538" defer></script>
-    <script src="app.js?v=20260722-165538" defer></script>
+    <template id="bpCardTemplate">
+      <article class="procedure-card">
+        <div class="procedure-main">
+          <p class="procedure-summary bp-summary"></p>
+        </div>
+        <div class="card-actions">
+          <button class="bp-edit-btn secondary-btn" type="button" aria-label="Edit blood pressure reading" title="Edit blood pressure reading">E</button>
+          <button class="bp-delete-btn danger-btn" type="button" aria-label="Delete blood pressure reading" title="Delete blood pressure reading">D</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="state.js?v=20260723-085644" defer></script>
+    <script src="forms.js?v=20260723-085644" defer></script>
+    <script src="renderer.js?v=20260723-085644" defer></script>
+    <script src="app.js?v=20260723-085644" defer></script>
   </body>
 </html>

@@ -488,6 +488,11 @@ button:disabled {
   gap: 0.75rem;
 }
 
+.bp-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .timeline-item,
 .med-card,
 .procedure-card {
@@ -541,6 +546,22 @@ button:disabled {
   flex-wrap: nowrap;
 }
 
+.bp-reading {
+  margin: 0;
+  font-size: 1.34rem;
+}
+
+.bp-meta,
+.bp-note {
+  margin: 0.3rem 0 0;
+  font-size: 1.06rem;
+  color: var(--muted);
+}
+
+.bp-note {
+  white-space: pre-wrap;
+}
+
 .procedure-summary {
   margin: 0;
   font-size: 1rem;
@@ -549,6 +570,23 @@ button:disabled {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.bp-summary {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.procedure-card:has(.bp-summary) .procedure-main {
+  min-width: 0;
+}
+
+.procedure-card:has(.bp-summary) .card-actions {
+  width: auto;
+  flex: 0 0 auto;
 }
 
 .card-actions {
