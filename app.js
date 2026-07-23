@@ -6,8 +6,8 @@ const LEGACY_MED_LIST_KEY = "medications-v1";
 const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260723-132933";
-const APP_RELEASE_LABEL = "Flag 47";
+const APP_BUILD = "20260723-205007";
+const APP_RELEASE_LABEL = "Flag 48";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -165,6 +165,7 @@ let alarmCooldownUntil = 0;
 let editingMedicationId = null;
 let editingProcedureId = null;
 let editingBloodPressureId = null;
+let autoFilledBloodPressureTimestamp = "";
 let medicationFormIsDirty = false;
 let medicationFormSyncing = false;
 let medicationStatusTimeoutId = null;
@@ -957,7 +958,8 @@ function resetBloodPressureForm() {
   dom.bpForm.reset();
   const timestampField = dom.bpForm.querySelector('[name="readingTimestamp"]');
   if (timestampField) {
-    timestampField.value = currentDatetimeLocalValue();
+    autoFilledBloodPressureTimestamp = currentDatetimeLocalValue();
+    timestampField.value = autoFilledBloodPressureTimestamp;
   }
 }
 
@@ -989,6 +991,7 @@ function renderBloodPressureLogs() {
     dom,
     setEditingBloodPressureId: (id) => {
       editingBloodPressureId = id;
+      autoFilledBloodPressureTimestamp = "";
     },
     state,
     saveState: () => {
@@ -2218,6 +2221,19 @@ function bindEvents() {
       resetBloodPressureEditMode,
       renderAll
     });
+  });
+
+  dom.bpForm?.addEventListener("focusin", () => {
+    if (!autoFilledBloodPressureTimestamp || editingBloodPressureId) {
+      return;
+    }
+
+    const formData = new FormData(dom.bpForm);
+    const hasEnteredReadingData = ["pressure", "pulse", "notes"].some((field) => String(formData.get(field) || "").trim() !== "");
+    if (!hasEnteredReadingData && dom.bpForm.readingTimestamp.value === autoFilledBloodPressureTimestamp) {
+      autoFilledBloodPressureTimestamp = currentDatetimeLocalValue();
+      dom.bpForm.readingTimestamp.value = autoFilledBloodPressureTimestamp;
+    }
   });
 
   dom.bpCancelEditBtn?.addEventListener("click", () => {

@@ -37,6 +37,7 @@
       const formData = new FormData(dom.profileForm);
 
       profile.name = String(formData.get("profileName") || "").trim() || profile.name;
+  profile.emergencyContactName = String(formData.get("emergencyContactName") || "").trim();
       profile.emergencyPhone = String(formData.get("emergencyPhone") || "").trim();
       profile.caregiverName = String(formData.get("caregiverName") || "").trim();
       profile.caregiverPhone = String(formData.get("caregiverPhone") || "").trim();
@@ -238,10 +239,71 @@
       renderAll();
     }
 
+    function handleBloodPressureSubmit(event, context) {
+      const {
+        dom,
+        state,
+        editingBloodPressureId,
+        makeId,
+        saveState,
+        resetBloodPressureEditMode,
+        renderAll
+      } = context;
+
+      event.preventDefault();
+      const formData = new FormData(dom.bpForm);
+      const timestampRaw = String(formData.get("readingTimestamp") || "").trim();
+      const pressure = String(formData.get("pressure") || "").trim();
+      const pulseRaw = String(formData.get("pulse") || "").trim();
+      const notes = String(formData.get("notes") || "").trim();
+      const timestamp = new Date(timestampRaw);
+
+      if (!timestampRaw || Number.isNaN(timestamp.getTime()) || !pressure) {
+        dom.bpMessage.textContent = "Please enter a date and time and pressure.";
+        return;
+      }
+
+      const pulse = pulseRaw === "" ? "" : Number(pulseRaw);
+      if (pulseRaw !== "" && (!Number.isFinite(pulse) || pulse <= 0)) {
+        dom.bpMessage.textContent = "Please enter a valid pulse, or leave it blank.";
+        return;
+      }
+
+      state.bloodPressureLogs = Array.isArray(state.bloodPressureLogs) ? state.bloodPressureLogs : [];
+      const existingReading = editingBloodPressureId
+        ? state.bloodPressureLogs.find((entry) => entry.id === editingBloodPressureId)
+        : null;
+      const savedAt = new Date().toISOString();
+      const reading = {
+        id: existingReading?.id || makeId(),
+        profileId: existingReading?.profileId || state.activeProfileId,
+        timestamp: timestamp.toISOString(),
+        pressure,
+        pulse: pulse === "" ? "" : String(Math.round(pulse)),
+        notes,
+        createdAt: existingReading?.createdAt || savedAt,
+        updatedAt: savedAt
+      };
+
+      if (existingReading) {
+        state.bloodPressureLogs = state.bloodPressureLogs.map((entry) => (entry.id === existingReading.id ? reading : entry));
+        dom.bpMessage.textContent = "Blood pressure reading updated.";
+      } else {
+        state.bloodPressureLogs.push(reading);
+        dom.bpMessage.textContent = "Blood pressure reading saved.";
+      }
+
+      saveState();
+      dom.bpForm.reset();
+      resetBloodPressureEditMode();
+      renderAll();
+    }
+
     return {
       handleProfileSubmit,
       handleMedicationSubmit,
-      handleProcedureSubmit
+      handleProcedureSubmit,
+      handleBloodPressureSubmit
     };
   }
 
