@@ -873,6 +873,10 @@ dialog::backdrop {
     flex-direction: column;
   }
 
+  main {
+    padding-bottom: calc(11rem + env(safe-area-inset-bottom));
+  }
+
   .grid-form {
     grid-template-columns: 1fr;
   }
