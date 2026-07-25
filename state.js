@@ -581,6 +581,7 @@
     }
 
     const logPrnDose = function(state, med, context = {}) {
+      const save = context.saveState || (() => saveState(state));
       const rawMinutesAgo = Number(context.minutesAgo);
       const minutesAgo = Number.isFinite(rawMinutesAgo) && rawMinutesAgo > 0 ? rawMinutesAgo : 0;
       const loggedAtValue = context.loggedAt ? new Date(context.loggedAt) : new Date();
@@ -595,7 +596,7 @@
       const dose = { id, profileId: state.activeProfileId, medId: med.id, dateKey, time, status: 'taken', snoozedUntil: null, timestamp: takenAtIso, loggedAt: loggedAtIso };
       state.doses.push(dose);
       med.stock = Math.max(0, Number(med.stock) - getDoseQuantityForTime(med, time));
-      saveState(state);
+      save();
       return dose;
     };
 

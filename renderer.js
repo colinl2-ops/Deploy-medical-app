@@ -126,10 +126,10 @@
 
         node.querySelector(".bp-edit-btn").addEventListener("click", () => {
           setEditingBloodPressureId(reading.id);
-          dom.bpForm.readingTimestamp.value = toDatetimeLocalValue(reading.timestamp);
-          dom.bpForm.pressure.value = reading.pressure || "";
-          dom.bpForm.pulse.value = reading.pulse || "";
-          dom.bpForm.notes.value = reading.notes || "";
+          dom.bpForm.querySelector('[name="readingTimestamp"]').value = toDatetimeLocalValue(reading.timestamp);
+          dom.bpForm.querySelector('[name="pressure"]').value = reading.pressure || "";
+          dom.bpForm.querySelector('[name="pulse"]').value = reading.pulse || "";
+          dom.bpForm.querySelector('[name="notes"]').value = reading.notes || "";
           dom.bpSubmitBtn.textContent = "Save Changes";
           dom.bpCancelEditBtn.classList.remove("hidden");
           dom.bpMessage.textContent = "Editing blood pressure reading.";

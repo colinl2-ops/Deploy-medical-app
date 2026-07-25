@@ -6,8 +6,8 @@ const LEGACY_MED_LIST_KEY = "medications-v1";
 const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260723-205007";
-const APP_RELEASE_LABEL = "Flag 48";
+const APP_BUILD = "20260725-154313";
+const APP_RELEASE_LABEL = "Flag 49";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -808,7 +808,7 @@ function submitPrnLogDose() {
     return;
   }
 
-  const dose = stateApi.logPrnDose(state, med, { minutesAgo });
+  const dose = stateApi.logPrnDose(state, med, { minutesAgo, saveState });
   pendingPrnLogMedication = null;
   dom.prnLogDialog?.close();
   renderAll();
