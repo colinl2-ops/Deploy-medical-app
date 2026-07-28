@@ -531,11 +531,7 @@
     function lastTakenForMed(state, medId) {
       return state.doses
         .filter((dose) => dose.medId === medId && dose.status === "taken" && dose.timestamp)
-        .sort((a, b) => {
-          const entryTimeA = String(a.loggedAt || a.createdAt || a.timestamp || "");
-          const entryTimeB = String(b.loggedAt || b.createdAt || b.timestamp || "");
-          return entryTimeB.localeCompare(entryTimeA);
-        })[0];
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
     }
 
     function createDueDosesForDate(state, date, context = {}) {
