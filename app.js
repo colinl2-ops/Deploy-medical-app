@@ -6,8 +6,8 @@ const LEGACY_MED_LIST_KEY = "medications-v1";
 const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260728-115845";
-const APP_RELEASE_LABEL = "Flag 51";
+const APP_BUILD = "20260728-120253";
+const APP_RELEASE_LABEL = "Flag 52";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -343,6 +343,7 @@ function closeMedicationSearch(message = "") {
 
 function selectMedicationSearchMatch(med) {
   closeMedicationSearch(`Showing ${med.name}.`);
+  renderMeds(medsForActiveProfile());
   rendererApi.jumpToMedication(med.id, { behavior: "auto", scrollDelay: 0, prioritize: true });
 }
 
@@ -2482,6 +2483,7 @@ window.__medicationFormTestApi = {
   setMedicationFormDirty,
   abandonMedicationChanges,
   requestCloseAllWindows,
+  selectMedicationSearchMatch,
   switchUser,
   getActiveProfileId: () => state.activeProfileId,
   clearMedicationSavedStatus,
