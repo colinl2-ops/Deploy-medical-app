@@ -6,8 +6,8 @@ const LEGACY_MED_LIST_KEY = "medications-v1";
 const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260728-121028";
-const APP_RELEASE_LABEL = "Flag 52";
+const APP_BUILD = "20260728-193419";
+const APP_RELEASE_LABEL = "Flag 53";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -1449,8 +1449,8 @@ function updateMedicalCard() {
     `Allergies: ${profile.allergies || "None known"}`,
     "",
     meds.length
-      ? `Medicines: ${meds.map((med) => `${med.frequency === "asRequired" ? "* " : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`).join("; ")}`
-      : "Medicines: None recorded"
+      ? `Medicines: ${meds.map((med) => `${med.frequency === "asRequired" ? "* " : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`).join("; ")}${meds.some((med) => med.frequency === "asRequired") ? " [* means as needed]" : ""}`
+      : "Medicines: None recorded",
   ].join("\n");
   dom.emergencyCallLink.href = profile.emergencyPhone ? `tel:${profile.emergencyPhone}` : "#";
 }
@@ -2475,7 +2475,11 @@ async function applyForceRefreshFlow() {
 }
 
 function shouldRegisterServiceWorker() {
-  return stateApi.shouldRegisterServiceWorker(window.location.search, FORCE_RELOAD_MARKER);
+  return stateApi.shouldRegisterServiceWorker(window.location.search, FORCE_RELOAD_MARKER, window.location.hostname);
+}
+
+function isLocalDevelopmentHost() {
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname.toLowerCase());
 }
 
 window.__medicationFormTestApi = {
@@ -2506,6 +2510,10 @@ if (!window.__skipAppBootstrap) {
     });
 
     window.addEventListener("load", () => {
+      if (isLocalDevelopmentHost()) {
+        Promise.all([clearOfflineCaches(), unregisterServiceWorkers()]);
+        return;
+      }
       if (!shouldRegisterServiceWorker()) {
         return;
       }

@@ -734,7 +734,7 @@
       const medsLabel = meds
         .map((med) => `${med.frequency === "asRequired" ? "*" : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`)
         .join(", ") || "None";
-      const asRequiredNote = hasAsRequired ? " [* as needed]" : "";
+      const asRequiredNote = hasAsRequired ? " | * means as needed" : "";
       const emergencyContact = [profile.emergencyContactName, profile.emergencyPhone].filter(Boolean).join(": ") || "Not recorded";
       return `${profile.name} | Emergency contact: ${emergencyContact} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${medsLabel}${asRequiredNote}`;
     };
@@ -1041,7 +1041,11 @@
       return params.toString();
     }
 
-    function shouldRegisterServiceWorker(search, reloadMarker) {
+    function shouldRegisterServiceWorker(search, reloadMarker, hostname = "") {
+      const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
+      if (localHosts.has(String(hostname).toLowerCase())) {
+        return false;
+      }
       const forceState = forceParamState(search, reloadMarker);
       if (!forceState.token) {
         return true;
