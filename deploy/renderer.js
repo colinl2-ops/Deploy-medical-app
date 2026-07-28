@@ -2,6 +2,12 @@
   function createRendererApi() {
     const WEEKDAY_SHORT_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+    function toDatetimeLocalValue(date) {
+      const value = date instanceof Date ? date : new Date(date);
+      const offsetMs = value.getTimezoneOffset() * 60 * 1000;
+      return new Date(value.getTime() - offsetMs).toISOString().slice(0, 16);
+    }
+
     function nextScheduledDoseWeekday(med, includesDay) {
       if (typeof includesDay !== "function") {
         return "";
@@ -87,6 +93,63 @@
       });
     }
 
+    function renderBloodPressureLogs(readings, context) {
+      const {
+        dom,
+        setEditingBloodPressureId,
+        state,
+        saveState,
+        renderAll
+      } = context;
+
+      const sortedReadings = readings.slice().sort((firstReading, secondReading) => String(secondReading.timestamp || "").localeCompare(String(firstReading.timestamp || "")));
+      dom.bpList.innerHTML = "";
+      if (sortedReadings.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "summary";
+        empty.textContent = "No blood pressure readings recorded for this user yet.";
+        dom.bpList.appendChild(empty);
+        return;
+      }
+
+      sortedReadings.forEach((reading) => {
+        const node = dom.bpTemplate.content.cloneNode(true);
+        const date = new Date(reading.timestamp);
+        const dateTime = Number.isNaN(date.getTime())
+          ? "Unknown date and time"
+          : date.toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+        const summaryParts = [dateTime, `Pressure: ${reading.pressure}`, reading.pulse ? `Pulse: ${reading.pulse}` : ""].filter(Boolean);
+        const noteText = String(reading.notes || "").trim();
+        node.querySelector(".bp-summary").textContent = noteText
+          ? `${summaryParts.join(" • ")}\n${noteText}`
+          : summaryParts.join(" • ");
+
+        node.querySelector(".bp-edit-btn").addEventListener("click", () => {
+          setEditingBloodPressureId(reading.id);
+          dom.bpForm.querySelector('[name="readingTimestamp"]').value = toDatetimeLocalValue(reading.timestamp);
+          dom.bpForm.querySelector('[name="pressure"]').value = reading.pressure || "";
+          dom.bpForm.querySelector('[name="pulse"]').value = reading.pulse || "";
+          dom.bpForm.querySelector('[name="notes"]').value = reading.notes || "";
+          dom.bpSubmitBtn.textContent = "Save Changes";
+          dom.bpCancelEditBtn.classList.remove("hidden");
+          dom.bpMessage.textContent = "Editing blood pressure reading.";
+          dom.bpForm.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+
+        node.querySelector(".bp-delete-btn").addEventListener("click", () => {
+          if (!window.confirm(`Delete blood pressure reading ${reading.pressure}?`)) {
+            return;
+          }
+          state.bloodPressureLogs = (state.bloodPressureLogs || []).filter((entry) => entry.id !== reading.id);
+          saveState();
+          dom.bpMessage.textContent = "Blood pressure reading deleted.";
+          renderAll();
+        });
+
+        dom.bpList.appendChild(node);
+      });
+    }
+
     function renderRunningOut(meds, context) {
       const { dom, daysLeft } = context;
       const low = meds
@@ -160,21 +223,47 @@
       });
     }
 
-    function jumpToMedication(medId) {
-      const card = document.getElementById(`med-card-${medId}`);
+    function jumpToMedication(medId, options = {}) {
+      const behavior = options.behavior || "smooth";
+      const scrollDelay = Number.isFinite(Number(options.scrollDelay)) ? Number(options.scrollDelay) : 50;
+      const prioritize = Boolean(options.prioritize);
+      let card = document.getElementById(`med-card-${medId}`);
       if (!card) return;
 
       const sectionCard = card.closest("section.card");
       const toggle = sectionCard?.querySelector(".card-toggle");
       if (sectionCard && sectionCard.classList.contains("is-collapsed") && toggle) {
         toggle.click();
+        card = document.getElementById(`med-card-${medId}`);
+        if (!card) return;
       }
 
-      setTimeout(() => {
-        card.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (prioritize && card.parentElement?.firstElementChild !== card) {
+        card.parentElement.prepend(card);
+      }
+
+      const doJump = () => {
+        if (behavior === "auto") {
+          const targetTop = card.getBoundingClientRect().top + window.pageYOffset;
+          const scrollTop = Math.max(0, targetTop - 12);
+          const scroller = document.scrollingElement || document.documentElement || document.body;
+          if (scroller && typeof scroller.scrollTo === "function") {
+            scroller.scrollTo({ top: scrollTop, behavior: "auto" });
+          }
+          window.scrollTo(0, scrollTop);
+        } else {
+          card.scrollIntoView({ behavior, block: "center" });
+        }
         card.classList.add("highlighted");
         setTimeout(() => card.classList.remove("highlighted"), 1500);
-      }, 50);
+      };
+
+      if (scrollDelay <= 0) {
+        doJump();
+        return;
+      }
+
+      setTimeout(doJump, scrollDelay);
     }
 
     function renderMeds(meds, context) {
@@ -182,6 +271,7 @@
         dom,
         daysLeft,
         formatDosePlan,
+        formatTimeWithLabel,
         includesDay,
         friendlyFoodRule,
         friendlyFrequency,
@@ -190,16 +280,36 @@
         doseUnit,
         refillFlag,
         friendlyForm,
+        beginMedicationFormSync,
+        endMedicationFormSync,
+        clearMedicationFormDirty,
         setEditingMedicationId,
         serializeDosePlan,
         toDateKey,
         openMedicationFormCard,
         refreshMedicationSubmitState,
+        scheduleMedicationFormJump,
         logPrnDose,
+        lastTakenForMed,
+        minHoursBetweenDoses,
+        toggleMedicationStatus,
         state,
         saveState,
         renderAll
       } = context;
+
+      function formatDuration(ms) {
+        const totalMinutes = Math.max(0, Math.round(ms / 60000));
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        if (hours > 0 && minutes > 0) {
+          return `${hours}h ${minutes}m`;
+        }
+        if (hours > 0) {
+          return `${hours}h`;
+        }
+        return `${minutes}m`;
+      }
 
       dom.medList.innerHTML = "";
       const sortedMeds = [...meds].sort((a, b) => {
@@ -215,11 +325,17 @@
         photoImg.src = med.photoDataUrl || "icons/icon-192.svg";
         photoImg.dataset.medId = med.id;
         node.querySelector(".med-name").textContent = `${med.name} ${med.strength}`;
+        const statusText = node.querySelector(".med-status");
+        if (statusText) {
+          statusText.textContent = `Status: ${med.status === "stopped" ? "Stopped" : "Active"}`;
+        }
         node.querySelector(".med-purpose").textContent = `For: ${med.purpose}`;
 
         const timesText = med.frequency === "asRequired"
           ? "As required (no schedule)"
-          : `Times: ${Array.isArray(med.times) && med.times.length > 0 ? med.times.join(", ") : "Not set"}`;
+          : `Times: ${Array.isArray(med.times) && med.times.length > 0
+            ? med.times.map((time) => (typeof formatTimeWithLabel === "function" ? formatTimeWithLabel(time) : time)).join(", ")
+            : "Not set"}`;
         node.querySelector(".med-times").textContent = timesText;
 
         node.querySelector(".med-dose-plan").textContent = `Dose plan: ${formatDosePlan(med)}`;
@@ -230,8 +346,30 @@
         const nextDoseWeekday = med.frequency === "weekly" || med.frequency === "everyOtherDay"
           ? nextScheduledDoseWeekday(med, includesDay)
           : "";
-        const nextDoseText = nextDoseWeekday ? ` | Next: ${nextDoseWeekday}` : "";
-        node.querySelector(".med-schedule").textContent = `${friendlyFoodRule(med.foodRule)} | ${freqLabel}${nextDoseText} | Repeats: ${repeatsCount(med)}`;
+        const scheduleBits = [friendlyFoodRule(med.foodRule), freqLabel];
+        if (med.frequency === "asRequired") {
+          const gapHours = typeof minHoursBetweenDoses === "function" ? minHoursBetweenDoses(med) : Number(med.minGapHours) || 0;
+          const previous = typeof lastTakenForMed === "function" ? lastTakenForMed(med.id) : null;
+          if (gapHours > 0) {
+            scheduleBits.push(`PRN gap ${gapHours}h`);
+          }
+          if (previous?.timestamp) {
+            const previousDate = new Date(previous.timestamp);
+            const elapsedMs = Date.now() - previousDate.getTime();
+            const takenTime = previousDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            scheduleBits.push(`Last taken at ${takenTime} (${formatDuration(elapsedMs)} ago)`);
+            if (gapHours > 0) {
+              const remainingMs = Math.max(0, (gapHours * 60 * 60 * 1000) - elapsedMs);
+              scheduleBits.push(remainingMs > 0 ? `Next allowed in ${formatDuration(remainingMs)}` : "Allowed now");
+            }
+          } else {
+            scheduleBits.push("No doses logged yet");
+          }
+        } else if (nextDoseWeekday) {
+          scheduleBits.push(`Next: ${nextDoseWeekday}`);
+        }
+        scheduleBits.push(`Repeats: ${repeatsCount(med)}`);
+        node.querySelector(".med-schedule").textContent = scheduleBits.join(" | ");
 
         const dl = daysLeft(med);
         const daysText = Number.isFinite(dl) ? `${dl.toFixed(1)} day(s) left` : `Stock: ${med.stock} ${doseUnit(med)}`;
@@ -239,31 +377,48 @@
         node.querySelector(".med-notes").textContent = med.notes || "No notes";
 
         node.querySelector(".edit-btn").addEventListener("click", () => {
-          setEditingMedicationId(med.id);
-          dom.medForm.name.value = med.name || "";
-          dom.medForm.strength.value = med.strength || "";
-          dom.medForm.purpose.value = med.purpose || "";
-          dom.medForm.stock.value = Number(med.stock || 0);
-          dom.medForm.pillsPerDose.value = Number(med.pillsPerDose || 1);
-          dom.medForm.dosePlan.value = serializeDosePlan(med);
-          dom.medForm.repeats.value = repeatsCount(med);
-          dom.medForm.startDate.value = med.startDate || toDateKey(new Date());
-          dom.medForm.times.value = Array.isArray(med.times) ? med.times.join(", ") : "";
-          dom.medForm.foodRule.value = med.foodRule || "none";
-          dom.medForm.frequency.value = med.frequency || "daily";
-          dom.medForm.frequency.dispatchEvent(new Event("change", { bubbles: true }));
-          dom.medForm.weeklyDays.value = Array.isArray(med.weeklyDays) ? med.weeklyDays.join(",") : "";
-          dom.medForm.barcode.value = med.barcode || "";
-          dom.medForm.notes.value = med.notes || "";
-          dom.medForm.form.value = med.form || "tablet";
-
-          // Set photo preview and remove flag
+          if (typeof beginMedicationFormSync === "function") {
+            beginMedicationFormSync();
+          }
           try {
-            const preview = document.getElementById('photoPreview');
-            if (preview) preview.src = med.photoDataUrl || 'icons/icon-192.svg';
-            const removeCb = dom.medForm.querySelector('#removePhoto');
-            if (removeCb) removeCb.checked = false;
-          } catch (e) {}
+            if (typeof clearMedicationSavedStatus === "function") {
+              clearMedicationSavedStatus();
+            }
+            setEditingMedicationId(med.id);
+            dom.medForm.name.value = med.name || "";
+            dom.medForm.strength.value = med.strength || "";
+            dom.medForm.purpose.value = med.purpose || "";
+            dom.medForm.stock.value = Number(med.stock || 0);
+            dom.medForm.pillsPerDose.value = Number(med.pillsPerDose || 1);
+            dom.medForm.dosePlan.value = serializeDosePlan(med);
+            dom.medForm.repeats.value = repeatsCount(med);
+            dom.medForm.startDate.value = med.startDate || toDateKey(new Date());
+            dom.medForm.times.value = Array.isArray(med.times) ? med.times.join(", ") : "";
+            dom.medForm.foodRule.value = med.foodRule || "none";
+            dom.medForm.frequency.value = med.frequency || "daily";
+            dom.medForm.frequency.dispatchEvent(new Event("change", { bubbles: true }));
+            if (dom.medForm.minGapHours) {
+              dom.medForm.minGapHours.value = Number.isFinite(Number(med.minGapHours)) && Number(med.minGapHours) >= 0 ? Number(med.minGapHours) : 0;
+            }
+            dom.medForm.weeklyDays.value = Array.isArray(med.weeklyDays) ? med.weeklyDays.join(",") : "";
+            dom.medForm.barcode.value = med.barcode || "";
+            dom.medForm.notes.value = med.notes || "";
+            dom.medForm.form.value = med.form || "tablet";
+
+            try {
+              const preview = document.getElementById('photoPreview');
+              if (preview) preview.src = med.photoDataUrl || 'icons/icon-192.svg';
+              const removeCb = dom.medForm.querySelector('#removePhoto');
+              if (removeCb) removeCb.checked = false;
+            } catch (e) {}
+          } finally {
+            if (typeof endMedicationFormSync === "function") {
+              endMedicationFormSync();
+            }
+            if (typeof clearMedicationFormDirty === "function") {
+              clearMedicationFormDirty();
+            }
+          }
 
           if (dom.medSubmitBtn) {
             dom.medSubmitBtn.textContent = "Save Changes";
@@ -276,27 +431,42 @@
           }
           dom.safetyMessage.textContent = `Editing ${med.name}. Update fields and click Save Changes.`;
           const jumpTarget = openMedicationFormCard();
-          setTimeout(() => {
-            const target = jumpTarget || document.getElementById("medFormTarget") || dom.medForm.closest("section.card") || dom.medForm;
-            const targetTop = target.getBoundingClientRect().top + window.pageYOffset;
-            const scrollTop = Math.max(0, targetTop - 12);
-            if (target.id) {
-              window.location.hash = target.id;
-            }
-            target.focus?.({ preventScroll: true });
-            const scroller = document.scrollingElement || document.documentElement || document.body;
-            if (scroller && typeof scroller.scrollTo === "function") {
-              scroller.scrollTo({ top: scrollTop, behavior: "auto" });
-            }
-            window.scrollTo(0, scrollTop);
-            dom.medForm.name?.focus?.({ preventScroll: true });
-          }, 100);
+          if (typeof scheduleMedicationFormJump === "function") {
+            scheduleMedicationFormJump(jumpTarget);
+          } else {
+            setTimeout(() => {
+              const target = jumpTarget || document.getElementById("medFormTarget") || dom.medForm.closest("section.card") || dom.medForm;
+              const targetTop = target.getBoundingClientRect().top + window.pageYOffset;
+              const scrollTop = Math.max(0, targetTop - 12);
+              if (target.id) {
+                window.location.hash = target.id;
+              }
+              target.focus?.({ preventScroll: true });
+              const scroller = document.scrollingElement || document.documentElement || document.body;
+              if (scroller && typeof scroller.scrollTo === "function") {
+                scroller.scrollTo({ top: scrollTop, behavior: "auto" });
+              }
+              window.scrollTo(0, scrollTop);
+              dom.medForm.name?.focus?.({ preventScroll: true });
+            }, 100);
+          }
         });
 
         const prnBtn = node.querySelector(".log-prn-btn");
-        if (med.frequency === "asRequired") {
+        const statusBtn = node.querySelector(".status-btn");
+        if (statusBtn) {
+          statusBtn.textContent = med.status === "stopped" ? "Resume" : "Mark Stopped";
+          if (typeof toggleMedicationStatus === "function") {
+            statusBtn.addEventListener("click", () => toggleMedicationStatus(med));
+          } else {
+            statusBtn.disabled = true;
+          }
+        }
+        if (med.frequency === "asRequired" && med.status !== "stopped") {
           prnBtn.classList.remove("hidden");
           prnBtn.addEventListener("click", () => logPrnDose(med));
+        } else {
+          prnBtn.classList.add("hidden");
         }
 
         node.querySelector(".danger-btn").addEventListener("click", () => {
@@ -437,6 +607,7 @@
         renderOrderPriority,
         renderMeds,
         renderProcedures,
+        renderBloodPressureLogs,
         renderTimeline,
         renderAdherence,
         maybeNotifyRefill,
@@ -462,6 +633,7 @@
       renderOrderPriority(meds);
       renderMeds(meds);
       renderProcedures();
+      renderBloodPressureLogs();
       renderTimeline(todayDoses, meds);
       renderAdherence(todayDoses);
       maybeNotifyRefill(meds);
@@ -475,6 +647,7 @@
       renderOrderPriority,
       jumpToMedication,
       renderMeds,
+      renderBloodPressureLogs,
       renderTimeline,
       renderAdherence,
       renderAll

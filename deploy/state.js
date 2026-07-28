@@ -2,31 +2,229 @@
   function createStateApi(config) {
     const keys = config.keys;
     const helpers = config.helpers;
+    const DEFAULT_TIMING_PRESETS = [
+      { key: "wake_up", label: "When I wake up", time: "07:00" },
+      { key: "before_breakfast", label: "Half hour before breakfast", time: "07:30" },
+      { key: "breakfast", label: "Breakfast", time: "08:00" },
+      { key: "mid_morning", label: "Mid morning", time: "10:00" },
+      { key: "mid_afternoon", label: "Mid afternoon", time: "15:00" },
+      { key: "dinner", label: "Dinner", time: "18:00" },
+      { key: "sleep", label: "Before going to sleep", time: "22:00" }
+    ];
+
     const buildDefaultState = function() {
       const first = helpers.defaultProfile();
-      return { profiles: [first], activeProfileId: first.id, medications: [], procedures: [], doses: [], settings: { highContrast: false } };
+      return { profiles: [first], activeProfileId: first.id, medications: [], procedures: [], bloodPressureLogs: [], doses: [], settings: { highContrast: false } };
     };
+
+    const validTimePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+    function normalizeTimingLabel(value) {
+      return String(value || "").trim().replace(/\s+/g, " ");
+    }
+
+    function slugifyTimingLabel(value) {
+      return normalizeTimingLabel(value).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    }
+
+    function normalizeTimingTime(value) {
+      const time = normalizeTimingLabel(value);
+      return validTimePattern.test(time) ? time : "";
+    }
+
+    function normalizeTimingPresetEntry(entry) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return null;
+      }
+
+      const label = normalizeTimingLabel(entry.label || entry.name || entry.key);
+      const time = normalizeTimingTime(entry.time || entry.value);
+      if (!label || !time) {
+        return null;
+      }
+
+      return {
+        key: slugifyTimingLabel(entry.key || label),
+        label,
+        time
+      };
+    }
+
+    function normalizeTimingPresets(value, options = {}) {
+      if (value == null) {
+        return options.defaultIfMissing === false ? [] : DEFAULT_TIMING_PRESETS.map((preset) => ({ ...preset }));
+      }
+
+      let entries = [];
+      if (Array.isArray(value)) {
+        entries = value;
+      } else if (typeof value === "object") {
+        entries = Object.entries(value).map(([label, time]) => ({ label, time }));
+      } else if (typeof value === "string") {
+        entries = String(value)
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => {
+            const separatorIndex = line.indexOf("=") >= 0 ? line.indexOf("=") : line.indexOf(":");
+            if (separatorIndex < 0) {
+              return null;
+            }
+            return {
+              label: line.slice(0, separatorIndex).trim(),
+              time: line.slice(separatorIndex + 1).trim()
+            };
+          })
+          .filter(Boolean);
+      }
+
+      const seenLabels = new Set();
+      const seenTimes = new Set();
+      const normalized = [];
+
+      entries.forEach((entry) => {
+        const normalizedEntry = normalizeTimingPresetEntry(entry);
+        if (!normalizedEntry) {
+          return;
+        }
+        const labelKey = normalizedEntry.key;
+        if (seenLabels.has(labelKey) || seenTimes.has(normalizedEntry.time)) {
+          return;
+        }
+        seenLabels.add(labelKey);
+        seenTimes.add(normalizedEntry.time);
+        normalized.push(normalizedEntry);
+      });
+
+      return normalized;
+    }
+
+    function timingPresetLookup(presets) {
+      const normalized = normalizeTimingPresets(presets, { defaultIfMissing: false });
+      const byLabel = new Map();
+      const byKey = new Map();
+      const byTime = new Map();
+
+      normalized.forEach((preset) => {
+        byLabel.set(normalizeTimingLabel(preset.label).toLowerCase(), preset.time);
+        byKey.set(preset.key, preset.time);
+        byTime.set(preset.time, preset.label);
+      });
+
+      return { presets: normalized, byLabel, byKey, byTime };
+    }
+
+    function resolveScheduledTime(value, timingPresets) {
+      const token = normalizeTimingLabel(value);
+      if (!token) {
+        return "";
+      }
+      if (validTimePattern.test(token)) {
+        return token;
+      }
+
+      const lookup = timingPresetLookup(timingPresets);
+      const normalizedToken = token.toLowerCase();
+      return lookup.byLabel.get(normalizedToken) || lookup.byKey.get(slugifyTimingLabel(token)) || "";
+    }
+
+    function formatTimeWithLabel(time, timingPresets) {
+      const normalizedTime = normalizeTimingTime(time);
+      if (!normalizedTime) {
+        return normalizeTimingLabel(time);
+      }
+
+      const lookup = timingPresetLookup(timingPresets);
+      const label = lookup.byTime.get(normalizedTime);
+      return label ? `${normalizedTime} - ${label}` : normalizedTime;
+    }
+
+    function formatTimingPresets(timingPresets) {
+      return normalizeTimingPresets(timingPresets, { defaultIfMissing: false })
+        .map((preset) => `${preset.label}=${preset.time}`)
+        .join("\n");
+    }
+
+    function normalizeDoseDateKey(dose) {
+      if (!dose || !dose.timestamp) {
+        return dose;
+      }
+
+      const timestampDate = new Date(dose.timestamp);
+      if (Number.isNaN(timestampDate.getTime())) {
+        return dose;
+      }
+
+      const normalizedDateKey = helpers.toDateKey(timestampDate);
+      if (!normalizedDateKey || normalizedDateKey === dose.dateKey) {
+        return dose;
+      }
+
+      const normalized = { ...dose, dateKey: normalizedDateKey };
+      if (dose.medId && dose.time) {
+        if (String(dose.id || "").includes("|prn-")) {
+          const suffixIndex = String(dose.id).indexOf("|prn-");
+          normalized.id = `${dose.medId}|${normalizedDateKey}${String(dose.id).slice(suffixIndex)}`;
+        } else {
+          normalized.id = `${dose.medId}|${normalizedDateKey}|${dose.time}`;
+        }
+      }
+
+      return normalized;
+    }
+
+    function normalizeBloodPressureReading(entry, profileId) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return null;
+      }
+
+      const pressure = String(entry.pressure || [entry.systolic, entry.diastolic].filter(Boolean).join("/") || "").trim();
+      if (!pressure) {
+        return null;
+      }
+
+      const timestamp = entry.timestamp || entry.readingTimestamp || new Date().toISOString();
+      const pulse = String(entry.pulse || "").trim();
+      return {
+        id: entry.id || helpers.makeId(),
+        profileId: entry.profileId || profileId,
+        timestamp,
+        pressure,
+        pulse,
+        notes: String(entry.notes ?? entry.note ?? "").trim(),
+        createdAt: entry.createdAt || timestamp,
+        updatedAt: entry.updatedAt || timestamp
+      };
+    }
 
     const normalizeState = function(parsed) {
       if (!parsed || !Array.isArray(parsed.profiles) || parsed.profiles.length === 0) return null;
-      const profiles = parsed.profiles;
+      const profiles = parsed.profiles.map((profile) => ({
+        ...profile,
+        timingPresets: normalizeTimingPresets(profile.timingPresets)
+      }));
       const resolvedActiveProfileId = profiles.some((profile) => profile.id === parsed.activeProfileId) ? parsed.activeProfileId : profiles[0].id;
-      const migratedMeds = (parsed.medications || []).map((med) => ({ ...med, profileId: med.profileId || resolvedActiveProfileId }));
-      const migratedDoses = (parsed.doses || []).map((dose) => ({ ...dose, profileId: dose.profileId || resolvedActiveProfileId }));
+      const migratedMeds = (parsed.medications || []).map((med) => ({
+        ...med,
+        profileId: med.profileId || resolvedActiveProfileId,
+        status: med.status === "stopped" ? "stopped" : "active"
+      }));
+      const migratedDoses = (parsed.doses || []).map((dose) => normalizeDoseDateKey({ ...dose, profileId: dose.profileId || resolvedActiveProfileId }));
       const migratedProcedures = (parsed.procedures || []).map((procedure) => ({ ...procedure, profileId: procedure.profileId || resolvedActiveProfileId }));
-      return { profiles, activeProfileId: resolvedActiveProfileId, medications: migratedMeds, procedures: migratedProcedures, doses: migratedDoses, settings: parsed.settings || { highContrast: false } };
+      const migratedBloodPressureLogs = (parsed.bloodPressureLogs || []).map((entry) => normalizeBloodPressureReading(entry, resolvedActiveProfileId)).filter(Boolean);
+      return { profiles, activeProfileId: resolvedActiveProfileId, medications: migratedMeds, procedures: migratedProcedures, bloodPressureLogs: migratedBloodPressureLogs, doses: migratedDoses, settings: parsed.settings || { highContrast: false } };
     };
 
     const recoverLegacyMedications = function(activeProfileId) {
       const legacy = helpers.parseJSON(localStorage.getItem(keys.LEGACY_MED_LIST_KEY) || "null");
       if (!Array.isArray(legacy) || legacy.length === 0) return [];
-      return legacy.map((item) => ({ id: item.id || helpers.makeId(), profileId: activeProfileId, name: item.name || "Medication", strength: item.dose || "", purpose: "Imported from older app", stock: 0, pillsPerDose: 1, form: "tablet", repeats: 0, times: ["08:00"], foodRule: "none", frequency: "daily", weeklyDays: [], barcode: "", notes: item.notes || "", startDate: helpers.toDateKey(new Date()), photoDataUrl: "" }));
+      return legacy.map((item) => ({ id: item.id || helpers.makeId(), profileId: activeProfileId, name: item.name || "Medication", strength: item.dose || "", purpose: "Imported from older app", stock: 0, pillsPerDose: 1, form: "tablet", repeats: 0, times: ["08:00"], foodRule: "none", frequency: "daily", weeklyDays: [], barcode: "", notes: item.notes || "", startDate: helpers.toDateKey(new Date()), photoDataUrl: "", status: "active" }));
     };
 
     const recoverRetiredMedsBackup = function(activeProfileId) {
       const backup = helpers.parseJSON(localStorage.getItem(keys.LEGACY_MEDS_BACKUP_KEY) || "null");
       if (!Array.isArray(backup) || backup.length === 0) return [];
-      return backup.filter((item) => item && typeof item === "object" && item.name).map((item) => ({ id: item.id || helpers.makeId(), profileId: item.profileId || activeProfileId, name: item.name || "Medication", strength: item.strength || item.dose || "", purpose: item.purpose || "Imported from backup", stock: Number(item.stock ?? 0), pillsPerDose: Number(item.pillsPerDose ?? 1), form: item.form || "tablet", repeats: Number(item.repeats ?? 0), times: Array.isArray(item.times) && item.times.length > 0 ? item.times : ["08:00"], foodRule: item.foodRule || "none", frequency: item.frequency || "daily", weeklyDays: Array.isArray(item.weeklyDays) ? item.weeklyDays : [], barcode: item.barcode || "", notes: item.notes || "", startDate: item.startDate || helpers.toDateKey(new Date()), photoDataUrl: item.photoDataUrl || "" }));
+      return backup.filter((item) => item && typeof item === "object" && item.name).map((item) => ({ id: item.id || helpers.makeId(), profileId: item.profileId || activeProfileId, name: item.name || "Medication", strength: item.strength || item.dose || "", purpose: item.purpose || "Imported from backup", stock: Number(item.stock ?? 0), pillsPerDose: Number(item.pillsPerDose ?? 1), form: item.form || "tablet", repeats: Number(item.repeats ?? 0), times: Array.isArray(item.times) && item.times.length > 0 ? item.times : ["08:00"], foodRule: item.foodRule || "none", frequency: item.frequency || "daily", weeklyDays: Array.isArray(item.weeklyDays) ? item.weeklyDays : [], barcode: item.barcode || "", notes: item.notes || "", startDate: item.startDate || helpers.toDateKey(new Date()), photoDataUrl: item.photoDataUrl || "", status: item.status === "stopped" ? "stopped" : "active" }));
     };
 
     const finalizeLoadedState = function(loadedState) {
@@ -92,7 +290,7 @@
           return;
         } catch (e2) {
           try {
-            const minimal = { profiles: state.profiles || [], activeProfileId: state.activeProfileId, medications: [], procedures: state.procedures || [], doses: state.doses || [], settings: state.settings || {} };
+            const minimal = { profiles: state.profiles || [], activeProfileId: state.activeProfileId, medications: [], procedures: state.procedures || [], bloodPressureLogs: state.bloodPressureLogs || [], doses: state.doses || [], settings: state.settings || {} };
             tryWrite(minimal);
           } catch (e3) {
             // Give up silently; there is nothing further we can do here.
@@ -109,18 +307,27 @@
       return state.medications.filter((med) => med.profileId === state.activeProfileId);
     }
 
+    function activeMedsForActiveProfile(state) {
+      return medsForActiveProfile(state).filter((med) => med.status !== "stopped");
+    }
+
     function proceduresForActiveProfile(state) {
       return state.procedures.filter((procedure) => procedure.profileId === state.activeProfileId);
     }
 
-    function parseTimes(raw) {
+    function bloodPressureLogsForActiveProfile(state) {
+      return (state.bloodPressureLogs || []).filter((entry) => entry.profileId === state.activeProfileId);
+    }
+
+    function parseTimes(raw, timingPresets = []) {
       return String(raw || "")
         .split(",")
         .map((item) => item.trim())
-        .filter((item) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(item));
+        .map((item) => resolveScheduledTime(item, timingPresets))
+        .filter((item) => validTimePattern.test(item));
     }
 
-    function parseDosePlan(raw) {
+    function parseDosePlan(raw, timingPresets = []) {
       const plan = {};
 
       String(raw || "")
@@ -130,10 +337,11 @@
         .forEach((entry) => {
           const [timeRaw, qtyRaw] = entry.split("=").map((item) => item.trim());
           const quantity = Number(qtyRaw);
-          if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(timeRaw) || !Number.isFinite(quantity) || quantity <= 0) {
+          const resolvedTime = resolveScheduledTime(timeRaw, timingPresets);
+          if (!validTimePattern.test(resolvedTime) || !Number.isFinite(quantity) || quantity <= 0) {
             return;
           }
-          plan[timeRaw] = quantity;
+          plan[resolvedTime] = quantity;
         });
 
       return plan;
@@ -142,7 +350,7 @@
     const normalizeDosePlan = function(value) {
       if (!value || typeof value !== "object" || Array.isArray(value)) return {};
       return Object.entries(value).reduce((plan, [time, quantity]) => {
-        if (!/^([01]\d|2[0-3]):([0-5]\d)$/.test(time)) return plan;
+        if (!validTimePattern.test(time)) return plan;
         const normalizedQuantity = Number(quantity);
         if (!Number.isFinite(normalizedQuantity) || normalizedQuantity <= 0) return plan;
         plan[time] = normalizedQuantity;
@@ -209,7 +417,7 @@
       return days.slice().sort((a,b)=>a-b).map((d)=>names[d]||"").filter(Boolean).join(", ");
     };
 
-    const formatDosePlan = function(med) {
+    const formatDosePlan = function(med, timingPresets = []) {
       if (med.frequency === "asRequired") return `${Number(med.pillsPerDose || 1)} ${doseUnit(med)}`;
       const times = Array.isArray(med.times) ? med.times : [];
       if (times.length === 0) return `No schedule - ${Number(med.pillsPerDose || 1)} ${doseUnit(med)}`;
@@ -217,20 +425,24 @@
         .map((time) => {
           const qty = getDoseQuantityForTime(med, time);
           const qtyText = qty === -1 ? "(not set)" : `${qty} ${doseUnit(med)}`;
-          return `${time} ${qtyText}`;
+          return `${formatTimeWithLabel(time, timingPresets)} ${qtyText}`;
         })
         .join(", ");
     };
 
-    const medDisplayLine = function(med) {
+    const medDisplayLine = function(med, timingPresets = []) {
       if (med.frequency === "asRequired") return `As required - ${med.pillsPerDose} ${doseUnit(med)}`;
-      return formatDosePlan(med);
+      return formatDosePlan(med, timingPresets);
     };
 
     const statusText = function(status) {
       if (status === "taken") return "Taken";
       if (status === "skipped") return "Skipped";
       return "Pending";
+    };
+
+    const medicationStatusLabel = function(med) {
+      return med && med.status === "stopped" ? "Stopped" : "Active";
     };
 
     const serializeDosePlan = function(med) {
@@ -277,7 +489,18 @@
 
     const doseId = function(medId, dateKey, time) { return `${medId}|${dateKey}|${time}`; };
 
+    function prnMinGapHours(med) {
+      const explicitGap = Number(med?.minGapHours);
+      if (Number.isFinite(explicitGap) && explicitGap >= 0) {
+        return explicitGap;
+      }
+      return 0;
+    }
+
     function minHoursBetweenDoses(med) {
+      if (med.frequency === "asRequired") {
+        return prnMinGapHours(med);
+      }
       const dailyNeed = pillsNeededPerDay(med);
       if (dailyNeed <= 0) {
         return 24;
@@ -308,7 +531,7 @@
     function lastTakenForMed(state, medId) {
       return state.doses
         .filter((dose) => dose.medId === medId && dose.status === "taken" && dose.timestamp)
-        .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))[0];
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
     }
 
     function createDueDosesForDate(state, date, context = {}) {
@@ -319,6 +542,9 @@
       const doseHistoryDays = Number(context.doseHistoryDays ?? 14);
 
       meds().forEach((med) => {
+        if (med.status === "stopped") {
+          return;
+        }
         if (!includesDay(med, date)) {
           return;
         }
@@ -350,21 +576,29 @@
       return all.sort((a, b) => a.time.localeCompare(b.time));
     }
 
-    const logPrnDose = function(state, med) {
-      const todayKey = helpers.toDateKey(new Date());
-      const now = new Date();
-      const time = now.toTimeString().slice(0,5);
-      const id = `${med.id}|${todayKey}|prn-${now.getTime()}`;
-      const dose = { id, profileId: state.activeProfileId, medId: med.id, dateKey: todayKey, time, status: 'taken', snoozedUntil: null, timestamp: now.toISOString() };
+    const logPrnDose = function(state, med, context = {}) {
+      const save = context.saveState || (() => saveState(state));
+      const rawMinutesAgo = Number(context.minutesAgo);
+      const minutesAgo = Number.isFinite(rawMinutesAgo) && rawMinutesAgo > 0 ? rawMinutesAgo : 0;
+      const loggedAtValue = context.loggedAt ? new Date(context.loggedAt) : new Date();
+      const timestampValue = context.timestamp ? new Date(context.timestamp) : new Date(Date.now() - minutesAgo * 60 * 1000);
+      const takenAt = Number.isNaN(timestampValue.getTime()) ? new Date() : timestampValue;
+      const loggedAt = Number.isNaN(loggedAtValue.getTime()) ? new Date() : loggedAtValue;
+      const dateKey = helpers.toDateKey(takenAt);
+      const time = takenAt.toTimeString().slice(0, 5);
+      const id = `${med.id}|${dateKey}|prn-${takenAt.getTime()}`;
+      const takenAtIso = takenAt.toISOString();
+      const loggedAtIso = loggedAt.toISOString();
+      const dose = { id, profileId: state.activeProfileId, medId: med.id, dateKey, time, status: 'taken', snoozedUntil: null, timestamp: takenAtIso, loggedAt: loggedAtIso };
       state.doses.push(dose);
       med.stock = Math.max(0, Number(med.stock) - getDoseQuantityForTime(med, time));
-      saveState(state);
+      save();
       return dose;
     };
 
     const overduePendingDoses = function(state) {
       const todayKey = helpers.toDateKey(new Date());
-      return state.doses.filter((dose) => dose.profileId === state.activeProfileId && dose.status === 'pending' && dose.dateKey < todayKey);
+      return state.doses.filter((dose) => dose.profileId === state.activeProfileId && dose.status === 'pending' && dose.dateKey < todayKey && findMed(state, dose.medId)?.status !== "stopped");
     };
 
     const backfillRecentDoseHistory = function(state, days = 14, context = {}) {
@@ -381,7 +615,6 @@
     };
 
     const catchUpOverdueDoses = function(state, context = {}) {
-      backfillRecentDoseHistory(state, context.days ?? 14, context);
       const overdue = overduePendingDoses(state);
       if (overdue.length === 0) return 0;
       overdue.forEach((dose) => {
@@ -501,8 +734,9 @@
       const medsLabel = meds
         .map((med) => `${med.frequency === "asRequired" ? "*" : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`)
         .join(", ") || "None";
-      const asRequiredNote = hasAsRequired ? " [* as needed]" : "";
-      return `${profile.name} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${medsLabel}${asRequiredNote}`;
+      const asRequiredNote = hasAsRequired ? " | * means as needed" : "";
+      const emergencyContact = [profile.emergencyContactName, profile.emergencyPhone].filter(Boolean).join(": ") || "Not recorded";
+      return `${profile.name} | Emergency contact: ${emergencyContact} | Blood: ${profile.bloodGroup || "Unknown"} | Conditions: ${profile.conditions || "None"} | Allergies: ${profile.allergies || "None"} | Current meds: ${medsLabel}${asRequiredNote}`;
     };
 
     function caregiverStatusMessage(profileName, todayDoses) {
@@ -524,6 +758,11 @@
       const sortedMeds = meds
         .map((med) => ({ med, left: daysLeft(med) }))
         .sort((a, b) => {
+          const stoppedA = a.med.status === "stopped";
+          const stoppedB = b.med.status === "stopped";
+          if (stoppedA !== stoppedB) {
+            return stoppedA ? 1 : -1;
+          }
           if (!Number.isFinite(a.left) && !Number.isFinite(b.left)) {
             return a.med.name.localeCompare(b.med.name);
           }
@@ -562,16 +801,24 @@
       } else {
         sortedMeds.forEach((med, i) => {
           lines.push("");
-          lines.push(`${i + 1}. ${med.name}${med.strength ? "  " + med.strength : ""}`);
+          lines.push(`${i + 1}. ${med.name}${med.strength ? "  " + med.strength : ""}${med.status === "stopped" ? "  [Stopped]" : ""}`);
           if (med.purpose) lines.push(`   Purpose  : ${med.purpose}`);
-          const times = Array.isArray(med.times) && med.times.length > 0 ? med.times.join(", ") : "Not set";
+          const times = Array.isArray(med.times) && med.times.length > 0
+            ? med.times.map((time) => formatTimeWithLabel(time, profile.timingPresets)).join(", ")
+            : "Not set";
           const freqExport = med.frequency === "weekly"
             ? `Weekly — ${friendlyWeeklyDays(med.weeklyDays) || "day not specified"}`
             : (FREQ_LABELS[med.frequency] || "Daily");
           lines.push(`   Schedule : ${freqExport}  -  ${times}`);
-          lines.push(`   Dose plan: ${formatDosePlan(med)}`);
+          lines.push(`   Dose plan: ${formatDosePlan(med, profile.timingPresets)}`);
+          if (med.frequency === "asRequired") {
+            lines.push(`   PRN gap  : ${prnMinGapHours(med)} hour(s)`);
+          }
           lines.push(`   Repeats  : ${repeatsCount(med)}`);
           lines.push(`   Food     : ${FOOD_LABELS[med.foodRule] || med.foodRule || "No special requirement"}`);
+          if (med.status === "stopped") {
+            lines.push("   Status   : Stopped");
+          }
           if (med.notes) lines.push(`   Notes    : ${med.notes}`);
         });
       }
@@ -623,19 +870,21 @@
         return Number(match[1]) * 60 + Number(match[2]);
       };
 
-      sortedMeds.forEach((med) => {
+      sortedMeds.filter((med) => med.status !== "stopped").forEach((med) => {
         const times = Array.isArray(med.times) ? med.times : [];
+        const medLabel = `${med.name}${med.strength ? ` (${med.strength})` : ""}${med.status === "stopped" ? " [Stopped]" : ""}`;
         if (times.length === 0) {
-          unsetRows.push(`- ${med.name}${med.strength ? ` (${med.strength})` : ""} - time not set`);
+          unsetRows.push(`- ${medLabel} - time not set`);
           return;
         }
 
         times.forEach((time) => {
           const minutes = toMinutes(time);
-          const doseLine = `- ${med.name}${med.strength ? ` (${med.strength})` : ""} - ${getDoseQuantityForTime(med, time)} ${doseUnit(med)}`;
+          const doseLine = `- ${medLabel} - ${getDoseQuantityForTime(med, time)} ${doseUnit(med)}`;
+          const displayTime = formatTimeWithLabel(time, profile.timingPresets);
 
           if (!timeGroups.has(time)) {
-            timeGroups.set(time, { minutes, rows: [] });
+            timeGroups.set(time, { minutes, displayTime, rows: [] });
           }
 
           timeGroups.get(time).rows.push({ medName: med.name, line: doseLine });
@@ -655,7 +904,7 @@
         lines.push("- None");
       } else {
         sortedTimes.forEach(([time, group]) => {
-          lines.push(time);
+          lines.push(group.displayTime || time);
           group.rows
             .sort((a, b) => a.medName.localeCompare(b.medName))
             .forEach((row) => lines.push(row.line));
@@ -702,7 +951,8 @@
         barcode: item.barcode || "",
         notes: item.notes || "",
         startDate: item.startDate || todayDateKey,
-        photoDataUrl: item.photoDataUrl || ""
+        photoDataUrl: item.photoDataUrl || "",
+        status: item.status === "stopped" ? "stopped" : "active"
       }));
 
       if (Array.isArray(parsed)) {
@@ -738,8 +988,16 @@
       return null;
     }
 
-    function buildAlarmDisplayMessage(dose, med) {
-      return `${dose.time} - ${getDoseQuantityForTime(med, dose.time)} ${doseUnit(med)}. ${friendlyFoodRule(med.foodRule)}.`;
+    function restoreImportedBackup(parsed, context = {}) {
+      if (parsed && typeof parsed === "object" && Number(parsed.schemaVersion) === 2 && parsed.state && typeof parsed.state === "object") {
+        return parsed.state;
+      }
+
+      return normalizeImportedBackup(parsed, context);
+    }
+
+    function buildAlarmDisplayMessage(dose, med, timingPresets = []) {
+      return `${formatTimeWithLabel(dose.time, timingPresets)} - ${getDoseQuantityForTime(med, dose.time)} ${doseUnit(med)}. ${friendlyFoodRule(med.foodRule)}.`;
     }
 
     function buildReminderSpeechText(med) {
@@ -783,7 +1041,11 @@
       return params.toString();
     }
 
-    function shouldRegisterServiceWorker(search, reloadMarker) {
+    function shouldRegisterServiceWorker(search, reloadMarker, hostname = "") {
+      const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
+      if (localHosts.has(String(hostname).toLowerCase())) {
+        return false;
+      }
       const forceState = forceParamState(search, reloadMarker);
       if (!forceState.token) {
         return true;
@@ -799,12 +1061,24 @@
       if (dosesForExport.length === 0) dosesForExport = fallbackDoses.filter((dose) => visibleMedIds.has(dose.medId));
       if (dosesForExport.length === 0 && visibleMeds.length > 0) {
         visibleMeds.forEach((med) => {
-          rows.push(`${dateKey},${(med.times && med.times[0]) || ""},${med.name},planned,`);
+          rows.push([
+            escapeCsvField(dateKey),
+            escapeCsvField((med.times && med.times[0]) || ""),
+            escapeCsvField(med.name),
+            escapeCsvField("planned"),
+            escapeCsvField("")
+          ].join(","));
         });
       } else {
         dosesForExport.forEach((dose) => {
           const med = findMedById(dose.medId);
-          rows.push(`${dose.dateKey},${dose.time},${med ? med.name : "Unknown"},${dose.status},${dose.timestamp || ""}`);
+          rows.push([
+            escapeCsvField(dose.dateKey),
+            escapeCsvField(dose.time),
+            escapeCsvField(med ? med.name : "Unknown"),
+            escapeCsvField(dose.status),
+            escapeCsvField(dose.timestamp || "")
+          ].join(","));
         });
       }
       return rows;
@@ -878,6 +1152,11 @@
       return "0000-00-00";
     };
 
+    function escapeCsvField(value) {
+      const text = String(value ?? "");
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+
     function recoverProfileMedicationVisibility(state, context) {
       const { getActiveProfile, saveState } = context;
       const profileIds = new Set(state.profiles.map((profile) => profile.id));
@@ -898,9 +1177,28 @@
         }
       });
 
+      (state.bloodPressureLogs || []).forEach((reading) => {
+        if (!reading.profileId || !profileIds.has(reading.profileId)) {
+          reading.profileId = activeId;
+          didMutate = true;
+        }
+      });
+
       if (didMutate) {
         saveState();
       }
+    }
+
+    function profileTimingPresets(profile) {
+      return normalizeTimingPresets(profile?.timingPresets, { defaultIfMissing: true });
+    }
+
+    function profileTimingLabelForTime(profile, time) {
+      return formatTimeWithLabel(time, profileTimingPresets(profile));
+    }
+
+    function profileTimingTimeForLabel(profile, value) {
+      return resolveScheduledTime(value, profileTimingPresets(profile));
     }
 
     return {
@@ -910,9 +1208,13 @@
       saveState,
       getActiveProfile,
       medsForActiveProfile,
+      activeMedsForActiveProfile,
       proceduresForActiveProfile,
+      bloodPressureLogsForActiveProfile,
       parseTimes,
       parseDosePlan,
+      parseTimingPresets: normalizeTimingPresets,
+      formatTimingPresets,
       normalizeDosePlan,
       hasDosePlan,
       getDoseQuantityForTime,
@@ -924,6 +1226,7 @@
       formatDosePlan,
       medDisplayLine,
       statusText,
+      medicationStatusLabel,
       serializeDosePlan,
       fixMedicationDosePlan,
       pillsNeededPerDay,
@@ -955,8 +1258,12 @@
       normalizeImportedBackup,
       buildAlarmDisplayMessage,
       buildReminderSpeechText,
+      profileTimingPresets,
+      profileTimingLabelForTime,
+      profileTimingTimeForLabel,
       findPendingDueDose,
       shouldEscalateAlarmMessage,
+      restoreImportedBackup,
       forceParamState,
       forceReloadQuery,
       shouldRegisterServiceWorker,
@@ -977,9 +1284,9 @@
 
 // If running under Node (tests), also export `createStateApi` for require()
 try {
-  if (typeof module !== 'undefined' && module.exports && typeof createStateApi !== 'undefined') {
+  if (typeof module !== 'undefined' && module.exports && typeof globalThis !== 'undefined' && globalThis.createStateApi) {
     module.exports = module.exports || {};
-    module.exports.createStateApi = createStateApi;
+    module.exports.createStateApi = globalThis.createStateApi;
   }
 } catch (e) {
   // ignore in browsers

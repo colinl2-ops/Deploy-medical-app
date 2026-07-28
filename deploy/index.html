@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
-    <link rel="stylesheet" href="styles.css?v=20260718-142203" />
+    <link rel="stylesheet" href="styles.css?v=20260728-193419" />
     <title>Medication Helper</title>
   </head>
   <body>
@@ -27,6 +27,15 @@
 
     <div class="fab-actions" aria-label="Quick actions">
       <button id="closeAllBtn" class="close-fab" type="button">Collapse All</button>
+      <button id="searchMedBtn" class="search-fab" type="button">Search</button>
+      <form id="searchMedForm" class="quick-search hidden" role="search" aria-label="Search medication">
+        <label class="sr-only" for="searchMedInput">Medication name</label>
+        <input id="searchMedInput" name="searchMedInput" type="search" autocomplete="off" placeholder="Medication name" />
+        <button class="primary-btn" type="submit">Find</button>
+        <button id="cancelSearchMedBtn" class="secondary-btn" type="button">Cancel</button>
+        <span id="searchMedStatus" class="quick-search-status" aria-live="polite"></span>
+        <div id="searchMedResults" class="quick-search-results" aria-live="polite"></div>
+      </form>
       <button id="emergencyBtn" class="emergency-fab" type="button">Emergency</button>
     </div>
 
@@ -52,7 +61,11 @@
             <input name="profileName" required placeholder="Example: Asha" />
           </label>
           <label>
-            Emergency contact
+            Emergency contact name
+            <input name="emergencyContactName" placeholder="Family member or helper" />
+          </label>
+          <label>
+            Emergency contact phone
             <input name="emergencyPhone" placeholder="+1..." />
           </label>
           <label>
@@ -80,6 +93,10 @@
             <input name="voiceLang" placeholder="en-US, hi-IN, ta-IN" value="en-US" />
           </label>
           <label class="full">
+            Timing presets
+            <textarea name="timingPresets" rows="7" placeholder="Breakfast=08:00\nMid morning=10:00\nDinner=18:00"></textarea>
+          </label>
+          <label class="full">
             Conditions
             <textarea name="conditions" rows="2" placeholder="Diabetes, hypertension"></textarea>
           </label>
@@ -99,10 +116,19 @@
       <section class="card">
         <h2>Add/Update Medicine</h2>
         <p class="summary">Includes photo, schedule complexity, stock count, and safety checks.</p>
+        <div id="medFormToolbar" class="med-form-toolbar">
+          <div class="button-row full med-form-actions">
+            <button id="medSubmitBtn" class="primary-btn" type="submit" form="medForm">Save Medication</button>
+            <button id="medCancelEditBtn" class="secondary-btn hidden" type="button">Abandon Changes</button>
+            <span id="medSaveSpinner" class="spinner hidden" aria-hidden="true">Saving…</span>
+          </div>
+          <p id="medSavedFlag" class="save-flag hidden" aria-live="polite"></p>
+          <p id="safetyMessage" class="warn-text" role="alert" aria-live="assertive"></p>
+        </div>
         <form id="medForm" class="grid-form">
           <label>
             Medication name
-            <input name="name" required data-required="true" placeholder="Metformin" />
+            <input name="name" required data-required="true" placeholder="Medication name" />
           </label>
           <label>
             Strength
@@ -152,13 +178,25 @@
               <option value="asRequired">As required (when needed)</option>
             </select>
           </label>
-          <label>
-            Times (comma separated HH:MM)
-            <input name="times" required data-required="true" placeholder="08:00, 19:00" />
+          <label id="minGapHoursRow" class="hidden">
+            Minimum gap between doses (hours, PRN only)
+            <input name="minGapHours" type="number" min="0" step="0.5" value="0" placeholder="0" />
           </label>
           <label>
-            Dose plan by time
+            <div class="required-row timing-picker-row">
+              <span>Times (HH:MM or preset label)</span>
+              <button type="button" class="secondary-btn timing-picker-button" data-timing-picker="medTimesPresetButton" aria-controls="medTimesPresetMenu" aria-expanded="false">Select Label</button>
+            </div>
+            <input name="times" required data-required="true" placeholder="08:00, 19:00" />
+            <div id="medTimesPresetMenu" class="timing-picker-menu" hidden></div>
+          </label>
+          <label>
+            <div class="required-row timing-picker-row">
+              <span>Dose plan by time (HH:MM or preset label)</span>
+              <button type="button" class="secondary-btn timing-picker-button" data-timing-picker="medDosePlanPresetButton" aria-controls="medDosePlanPresetMenu" aria-expanded="false">Select Label</button>
+            </div>
             <input name="dosePlan" placeholder="08:00=1, 19:00=1" />
+            <div id="medDosePlanPresetMenu" class="timing-picker-menu" hidden></div>
           </label>
           <label>
             Food timing
@@ -192,32 +230,27 @@
             Notes
             <textarea name="notes" rows="2" placeholder="Keep away from sunlight"></textarea>
           </label>
-          <div class="button-row full">
-            <button id="medSubmitBtn" class="primary-btn" type="submit">Save Medication</button>
-            <button id="medCancelEditBtn" class="secondary-btn hidden" type="button">Cancel Edit</button>
-            <span id="medSaveSpinner" class="spinner hidden" aria-hidden="true">Saving…</span>
-          </div>
         </form>
-        <p id="medSavedFlag" class="save-flag hidden" aria-live="polite"></p>
         <p class="tiny-note">Use dose plan when morning and night quantities differ. Example: 08:00=1, 19:00=2.</p>
-        <p id="safetyMessage" class="warn-text" aria-live="polite"></p>
       </section>
 
       <section class="card">
-        <h2>Today Timeline</h2>
+        <h2>Take Today / Reports</h2>
+        <div class="timeline-toolbar">
+          <div class="button-row">
+            <button id="markMorningTakenBtn" class="primary-btn" type="button">Mark All Morning Taken</button>
+            <button id="markEveningTakenBtn" class="secondary-btn" type="button">Mark All Evening Taken</button>
+          </div>
+          <div id="todayTimelineActions" class="button-row">
+            <button id="startVoiceCmdBtn" class="secondary-btn" type="button">Voice Command</button>
+            <button id="exportCsvBtn" class="secondary-btn" type="button">Export CSV</button>
+            <button id="exportMedListBtn" class="secondary-btn" type="button">Export Med List</button>
+            <button id="exportAmPmBtn" class="secondary-btn" type="button">Export AM/PM List</button>
+            <button id="printReportBtn" class="secondary-btn" type="button">Print Summary</button>
+          </div>
+        </div>
         <p id="todaySummary" class="summary">No schedule yet.</p>
         <div id="timeline" class="timeline" aria-live="polite"></div>
-        <div class="button-row">
-          <button id="markMorningTakenBtn" class="primary-btn" type="button">Mark All Morning Taken</button>
-          <button id="markEveningTakenBtn" class="secondary-btn" type="button">Mark All Evening Taken</button>
-        </div>
-        <div id="todayTimelineActions" class="button-row">
-          <button id="startVoiceCmdBtn" class="secondary-btn" type="button">Voice Command</button>
-          <button id="exportCsvBtn" class="secondary-btn" type="button">Export CSV</button>
-          <button id="exportMedListBtn" class="secondary-btn" type="button">Export Med List</button>
-          <button id="exportAmPmBtn" class="secondary-btn" type="button">Export AM/PM List</button>
-          <button id="printReportBtn" class="secondary-btn" type="button">Print Summary</button>
-        </div>
       </section>
 
       <section class="card">
@@ -226,7 +259,7 @@
       </section>
 
       <section class="card">
-        <h2>Adherence and Trends</h2>
+        <h2>Catch up, / Adherance and Trends</h2>
         <p id="adherenceSummary" class="summary">No adherence data yet.</p>
         <ul id="trendList" class="plain-list"></ul>
         <div class="button-row">
@@ -241,17 +274,6 @@
           <button id="notifyCaregiverBtn" class="secondary-btn" type="button">Notify Missed Dose</button>
           <button id="requestRefillBtn" class="secondary-btn" type="button">Request Refill</button>
           <button id="callDoctorBtn" class="secondary-btn" type="button">Call Doctor</button>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>Backup and Restore</h2>
-        <div class="button-row">
-          <button id="exportBackupBtn" class="secondary-btn" type="button">Export Backup</button>
-          <label class="file-label secondary-btn">
-            Restore Backup
-            <input id="importBackupInput" type="file" accept="application/json" />
-          </label>
         </div>
       </section>
 
@@ -285,6 +307,45 @@
         </div>
         <div id="procedureList" class="procedure-list"></div>
       </section>
+
+      <section class="card">
+        <h2>Blood Pressure</h2>
+        <form id="bpForm" class="grid-form">
+          <label>
+            Date and time
+            <input id="readingTimestamp" name="readingTimestamp" type="datetime-local" required />
+          </label>
+          <label>
+            Pressure
+            <input name="pressure" required placeholder="120/80" />
+          </label>
+          <label>
+            Pulse (optional)
+            <input name="pulse" type="number" min="1" step="1" placeholder="72" />
+          </label>
+          <label class="full">
+            Notes (optional)
+            <textarea name="notes" rows="3" placeholder="After breakfast, feeling calm"></textarea>
+          </label>
+          <div class="button-row full">
+            <button id="bpSubmitBtn" class="primary-btn" type="submit">Save Reading</button>
+            <button id="bpCancelEditBtn" class="secondary-btn hidden" type="button">Cancel Edit</button>
+          </div>
+        </form>
+        <p id="bpMessage" class="warn-text" aria-live="polite"></p>
+        <div id="bpList" class="procedure-list"></div>
+      </section>
+
+      <section class="card">
+        <h2>Backup and Restore</h2>
+        <div class="button-row">
+          <button id="exportBackupBtn" class="secondary-btn" type="button">Export Backup</button>
+          <label class="file-label secondary-btn">
+            Restore Backup
+            <input id="importBackupInput" type="file" accept="application/json" />
+          </label>
+        </div>
+      </section>
     </main>
 
     <div id="undoToast" class="undo-toast hidden" role="status" aria-live="polite">
@@ -297,8 +358,17 @@
       <p id="medicalCardText"></p>
       <div class="button-row">
         <a id="emergencyCallLink" class="primary-btn" href="#">Call Emergency Contact</a>
+        <button id="openLockScreenCardBtn" class="secondary-btn" type="button">Lock Screen Card</button>
         <button id="closeEmergencyBtn" class="secondary-btn" type="button">Close</button>
       </div>
+    </dialog>
+
+    <dialog id="lockScreenCardDialog" class="lock-screen-card-dialog" aria-label="Emergency lock screen card">
+      <article class="lock-screen-card">
+        <p class="lock-screen-card-kicker">Emergency medical information</p>
+        <h2 id="lockScreenCardName">Medical Card</h2>
+        <p id="lockScreenCardText" class="lock-screen-card-text"></p>
+      </article>
     </dialog>
 
     <dialog id="photoPreviewDialog" class="photo-dialog" aria-label="Photo preview dialog">
@@ -307,6 +377,19 @@
         <button id="photoReplaceBtn" class="primary-btn" type="button" aria-label="Replace photo">Replace</button>
         <button id="photoRemoveBtn" class="danger-btn" type="button" aria-label="Remove photo">Remove</button>
         <button id="photoCloseBtn" class="secondary-btn" type="button" aria-label="Close photo preview">Close</button>
+      </div>
+    </dialog>
+
+    <dialog id="prnLogDialog" aria-label="Log as-required medication">
+      <h2 id="prnLogTitle">Log PRN dose</h2>
+      <p id="prnLogHint">Enter how many minutes ago you took the medication.</p>
+      <label>
+        Minutes ago
+        <input id="prnMinutesAgoInput" type="number" min="0" step="1" value="0" />
+      </label>
+      <div class="button-row">
+        <button id="prnLogCancelBtn" class="secondary-btn" type="button">Cancel</button>
+        <button id="prnLogConfirmBtn" class="primary-btn" type="button">Log Dose</button>
       </div>
     </dialog>
 
@@ -331,6 +414,7 @@
         <img class="med-photo" alt="Medication photo" />
         <div class="med-main">
           <h3 class="med-name"></h3>
+          <p class="med-status"></p>
           <p class="med-purpose"></p>
           <p class="med-times"></p>
           <p class="med-dose-plan"></p>
@@ -340,6 +424,7 @@
         </div>
         <div class="card-actions">
           <button class="edit-btn secondary-btn" type="button">Edit</button>
+          <button class="status-btn secondary-btn" type="button"></button>
           <button class="log-prn-btn primary-btn hidden" type="button">Log dose now</button>
           <button class="danger-btn" type="button">Remove</button>
         </div>
@@ -375,9 +460,21 @@
       </article>
     </template>
 
-    <script src="state.js?v=20260718-142203" defer></script>
-    <script src="forms.js?v=20260718-142203" defer></script>
-    <script src="renderer.js?v=20260718-142203" defer></script>
-    <script src="app.js?v=20260718-142203" defer></script>
+    <template id="bpCardTemplate">
+      <article class="procedure-card">
+        <div class="procedure-main">
+          <p class="procedure-summary bp-summary"></p>
+        </div>
+        <div class="card-actions">
+          <button class="bp-edit-btn secondary-btn" type="button" aria-label="Edit blood pressure reading" title="Edit blood pressure reading">E</button>
+          <button class="bp-delete-btn danger-btn" type="button" aria-label="Delete blood pressure reading" title="Delete blood pressure reading">D</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="state.js?v=20260728-193419" defer></script>
+    <script src="forms.js?v=20260728-193419" defer></script>
+    <script src="renderer.js?v=20260728-193419" defer></script>
+    <script src="app.js?v=20260728-193419" defer></script>
   </body>
 </html>

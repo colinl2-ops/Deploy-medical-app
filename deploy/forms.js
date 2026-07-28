@@ -31,12 +31,13 @@
     }
 
     function handleProfileSubmit(event, context) {
-      const { dom, getActiveProfile, saveState, renderAll } = context;
+      const { dom, getActiveProfile, parseTimingPresets, saveState, renderAll } = context;
       event.preventDefault();
       const profile = getActiveProfile();
       const formData = new FormData(dom.profileForm);
 
       profile.name = String(formData.get("profileName") || "").trim() || profile.name;
+  profile.emergencyContactName = String(formData.get("emergencyContactName") || "").trim();
       profile.emergencyPhone = String(formData.get("emergencyPhone") || "").trim();
       profile.caregiverName = String(formData.get("caregiverName") || "").trim();
       profile.caregiverPhone = String(formData.get("caregiverPhone") || "").trim();
@@ -46,6 +47,9 @@
       profile.conditions = String(formData.get("conditions") || "").trim();
       profile.allergies = String(formData.get("allergies") || "").trim();
       profile.voiceLang = String(formData.get("voiceLang") || "en-US").trim();
+      profile.timingPresets = typeof parseTimingPresets === "function"
+        ? parseTimingPresets(formData.get("timingPresets"))
+        : String(formData.get("timingPresets") || "").trim();
 
       saveState();
       renderAll();
@@ -101,6 +105,7 @@
       const frequency = String(formData.get("frequency") || "daily");
       const isPrn = frequency === "asRequired";
       const pillsPerDose = Number(formData.get("pillsPerDose") || 1);
+      const minGapHours = isPrn ? Number(formData.get("minGapHours") || 0) : null;
 
       // Fix A: silently drop dose plan entries for times no longer scheduled
       Object.keys(parsedDosePlan).forEach((time) => {
@@ -133,10 +138,12 @@
         dosePlan: parsedDosePlan,
         foodRule: String(formData.get("foodRule") || "none"),
         frequency: frequency,
+        minGapHours: Number.isFinite(minGapHours) ? Math.max(0, minGapHours) : null,
         weeklyDays: parseWeeklyDays(formData.get("weeklyDays")),
         barcode: String(formData.get("barcode") || "").trim(),
         notes: String(formData.get("notes") || "").trim(),
         startDate: resolvedStartDate,
+        status: existingMed?.status === "stopped" ? "stopped" : "active",
         photoDataUrl: (removePhotoFlag ? "" : (photoDataUrl || existingMed?.photoDataUrl || ""))
       };
 
@@ -172,7 +179,8 @@
         if (preview) preview.src = med.photoDataUrl || 'icons/icon-192.svg';
       } catch (e) {}
       resetMedicationEditMode();
-      flashMedicationSaved(dom, existingMed ? "Changes Saved" : "Medication Saved");
+      dom.safetyMessage.textContent = safetyWarning || "";
+        flashMedicationSaved(dom, existingMed ? "Changes saved. The form is ready for a new medicine." : "Medication saved. The form is ready for a new medicine.");
       renderAll();
       } finally {
         if (dom.medSubmitBtn) dom.medSubmitBtn.disabled = false;
@@ -231,10 +239,71 @@
       renderAll();
     }
 
+    function handleBloodPressureSubmit(event, context) {
+      const {
+        dom,
+        state,
+        editingBloodPressureId,
+        makeId,
+        saveState,
+        resetBloodPressureEditMode,
+        renderAll
+      } = context;
+
+      event.preventDefault();
+      const formData = new FormData(dom.bpForm);
+      const timestampRaw = String(formData.get("readingTimestamp") || "").trim();
+      const pressure = String(formData.get("pressure") || "").trim();
+      const pulseRaw = String(formData.get("pulse") || "").trim();
+      const notes = String(formData.get("notes") || "").trim();
+      const timestamp = new Date(timestampRaw);
+
+      if (!timestampRaw || Number.isNaN(timestamp.getTime()) || !pressure) {
+        dom.bpMessage.textContent = "Please enter a date and time and pressure.";
+        return;
+      }
+
+      const pulse = pulseRaw === "" ? "" : Number(pulseRaw);
+      if (pulseRaw !== "" && (!Number.isFinite(pulse) || pulse <= 0)) {
+        dom.bpMessage.textContent = "Please enter a valid pulse, or leave it blank.";
+        return;
+      }
+
+      state.bloodPressureLogs = Array.isArray(state.bloodPressureLogs) ? state.bloodPressureLogs : [];
+      const existingReading = editingBloodPressureId
+        ? state.bloodPressureLogs.find((entry) => entry.id === editingBloodPressureId)
+        : null;
+      const savedAt = new Date().toISOString();
+      const reading = {
+        id: existingReading?.id || makeId(),
+        profileId: existingReading?.profileId || state.activeProfileId,
+        timestamp: timestamp.toISOString(),
+        pressure,
+        pulse: pulse === "" ? "" : String(Math.round(pulse)),
+        notes,
+        createdAt: existingReading?.createdAt || savedAt,
+        updatedAt: savedAt
+      };
+
+      if (existingReading) {
+        state.bloodPressureLogs = state.bloodPressureLogs.map((entry) => (entry.id === existingReading.id ? reading : entry));
+        dom.bpMessage.textContent = "Blood pressure reading updated.";
+      } else {
+        state.bloodPressureLogs.push(reading);
+        dom.bpMessage.textContent = "Blood pressure reading saved.";
+      }
+
+      saveState();
+      dom.bpForm.reset();
+      resetBloodPressureEditMode();
+      renderAll();
+    }
+
     return {
       handleProfileSubmit,
       handleMedicationSubmit,
-      handleProcedureSubmit
+      handleProcedureSubmit,
+      handleBloodPressureSubmit
     };
   }
 

@@ -3,10 +3,11 @@ const BACKUP_STORAGE_KEY = "med-helper-v3-backup";
 const LEGACY_MEDS_BACKUP_KEY = "med-helper-meds-v1";
 const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
+const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260718-142203";
-const APP_RELEASE_LABEL = "Flag 21";
+const APP_BUILD = "20260728-193419";
+const APP_RELEASE_LABEL = "Flag 53";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -17,12 +18,41 @@ const INTERACTION_RULES = [
 
 const byId = (id) => document.getElementById(id);
 
+function applyBloodPressureWrapStyle() {
+  const style = document.createElement("style");
+  style.textContent = `
+    .bp-summary {
+      white-space: pre-wrap !important;
+      overflow-wrap: break-word;
+      word-break: normal;
+      overflow: visible;
+      text-overflow: clip;
+    }
+    .procedure-card:has(.bp-summary) .procedure-main {
+      min-width: 0;
+    }
+    .procedure-card:has(.bp-summary) .card-actions {
+      width: auto;
+      flex: 0 0 auto;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+applyBloodPressureWrapStyle();
+
 const dom = {
   medForm: byId("medForm"),
+  medTimesPresetMenu: byId("medTimesPresetMenu"),
+  medDosePlanPresetMenu: byId("medDosePlanPresetMenu"),
+  medTimesPresetButton: document.querySelector("[data-timing-picker='medTimesPresetButton']"),
+  medDosePlanPresetButton: document.querySelector("[data-timing-picker='medDosePlanPresetButton']"),
   procedureForm: byId("procedureForm"),
+  bpForm: byId("bpForm"),
   profileForm: byId("profileForm"),
   medList: byId("medList"),
   procedureList: byId("procedureList"),
+  bpList: byId("bpList"),
   timeline: byId("timeline"),
   todaySummary: byId("todaySummary"),
   runningOutSummary: byId("runningOutSummary"),
@@ -34,17 +64,35 @@ const dom = {
   trendList: byId("trendList"),
   medTemplate: byId("medCardTemplate"),
   procedureTemplate: byId("procedureCardTemplate"),
+  bpTemplate: byId("bpCardTemplate"),
   timelineTemplate: byId("timelineItemTemplate"),
   installButton: byId("installAppBtn"),
   highContrastBtn: byId("highContrastBtn"),
   safetyMessage: byId("safetyMessage"),
   procedureMessage: byId("procedureMessage"),
+  bpMessage: byId("bpMessage"),
   closeAllBtn: byId("closeAllBtn"),
+  searchMedBtn: byId("searchMedBtn"),
+  searchMedForm: byId("searchMedForm"),
+  searchMedInput: byId("searchMedInput"),
+  cancelSearchMedBtn: byId("cancelSearchMedBtn"),
+  searchMedStatus: byId("searchMedStatus"),
+  searchMedResults: byId("searchMedResults"),
   emergencyBtn: byId("emergencyBtn"),
   emergencyDialog: byId("emergencyDialog"),
   medicalCardText: byId("medicalCardText"),
   emergencyCallLink: byId("emergencyCallLink"),
+  openLockScreenCardBtn: byId("openLockScreenCardBtn"),
   closeEmergencyBtn: byId("closeEmergencyBtn"),
+  lockScreenCardDialog: byId("lockScreenCardDialog"),
+  lockScreenCardName: byId("lockScreenCardName"),
+  lockScreenCardText: byId("lockScreenCardText"),
+  prnLogDialog: byId("prnLogDialog"),
+  prnLogTitle: byId("prnLogTitle"),
+  prnLogHint: byId("prnLogHint"),
+  prnMinutesAgoInput: byId("prnMinutesAgoInput"),
+  prnLogCancelBtn: byId("prnLogCancelBtn"),
+  prnLogConfirmBtn: byId("prnLogConfirmBtn"),
   alarmOverlay: byId("alarmOverlay"),
   alarmTitle: byId("alarmTitle"),
   alarmMessage: byId("alarmMessage"),
@@ -75,7 +123,9 @@ const dom = {
   medSavedFlag: byId("medSavedFlag"),
   medCancelEditBtn: byId("medCancelEditBtn"),
   procedureSubmitBtn: byId("procedureSubmitBtn"),
-  procedureCancelEditBtn: byId("procedureCancelEditBtn")
+  procedureCancelEditBtn: byId("procedureCancelEditBtn"),
+  bpSubmitBtn: byId("bpSubmitBtn"),
+  bpCancelEditBtn: byId("bpCancelEditBtn")
 };
 
 if (dom.buildInfo) {
@@ -114,6 +164,122 @@ let muteAlarmsUntilKey = null;
 let alarmCooldownUntil = 0;
 let editingMedicationId = null;
 let editingProcedureId = null;
+let editingBloodPressureId = null;
+let autoFilledBloodPressureTimestamp = "";
+let medicationFormIsDirty = false;
+let medicationFormSyncing = false;
+let medicationStatusTimeoutId = null;
+let medicationFormJumpTimeoutId = null;
+let pendingPrnLogMedication = null;
+
+function medicationFormHasPendingChanges() {
+  return medicationFormIsDirty || editingMedicationId !== null;
+}
+
+function updateMedicationAbandonButtonState() {
+  if (!dom.medCancelEditBtn) {
+    return;
+  }
+
+  const shouldShow = medicationFormHasPendingChanges();
+  dom.medCancelEditBtn.classList.toggle("hidden", !shouldShow);
+  dom.medCancelEditBtn.textContent = "Abandon Changes";
+}
+
+function setMedicationFormDirty(isDirty) {
+  medicationFormIsDirty = Boolean(isDirty);
+  if (medicationFormIsDirty) {
+    clearMedicationSavedStatus();
+  }
+  updateMedicationAbandonButtonState();
+}
+
+function flashMedicationStatus(message) {
+  if (!dom.medSavedFlag) {
+    return;
+  }
+
+  dom.medSavedFlag.textContent = message || "";
+  dom.medSavedFlag.classList.remove("hidden");
+  dom.medSavedFlag.classList.add("visible");
+}
+
+function clearMedicationSavedStatus() {
+  if (!dom.medSavedFlag) {
+    return;
+  }
+
+  dom.medSavedFlag.textContent = "";
+  dom.medSavedFlag.classList.add("hidden");
+  dom.medSavedFlag.classList.remove("visible");
+}
+
+function cancelMedicationFormJump() {
+  if (medicationFormJumpTimeoutId) {
+    clearTimeout(medicationFormJumpTimeoutId);
+    medicationFormJumpTimeoutId = null;
+  }
+}
+
+function scheduleMedicationFormJump(target) {
+  cancelMedicationFormJump();
+  medicationFormJumpTimeoutId = window.setTimeout(() => {
+    medicationFormJumpTimeoutId = null;
+    const resolvedTarget = target || document.getElementById("medFormTarget") || dom.medForm?.closest("section.card") || dom.medForm;
+    if (!resolvedTarget) {
+      return;
+    }
+
+    const targetTop = resolvedTarget.getBoundingClientRect().top + window.pageYOffset;
+    const scrollTop = Math.max(0, targetTop - 12);
+    if (resolvedTarget.id) {
+      window.location.hash = resolvedTarget.id;
+    }
+    resolvedTarget.focus?.({ preventScroll: true });
+    const scroller = document.scrollingElement || document.documentElement || document.body;
+    if (scroller && typeof scroller.scrollTo === "function") {
+      scroller.scrollTo({ top: scrollTop, behavior: "auto" });
+    }
+    window.scrollTo(0, scrollTop);
+  }, 50);
+}
+
+function clearMedicationFormPreview() {
+  try {
+    const input = dom.medForm.querySelector('#photoInput');
+    if (input) input.value = '';
+    const removeCb = dom.medForm.querySelector('#removePhoto');
+    if (removeCb) removeCb.checked = false;
+    const preview = document.getElementById('photoPreview');
+    if (preview) preview.src = 'icons/icon-192.svg';
+  } catch (e) {}
+}
+
+function markMedicationFormDirty() {
+  if (medicationFormSyncing) {
+    return;
+  }
+  setMedicationFormDirty(true);
+}
+
+function medicationFormBlockMessage() {
+  if (dom.safetyMessage) {
+    dom.safetyMessage.textContent = "Save or abandon changes before leaving the medication form.";
+  }
+}
+
+function canCollapseMedicationForm(card) {
+  if (!card || !dom.medForm || !card.contains(dom.medForm)) {
+    return true;
+  }
+
+  if (!medicationFormHasPendingChanges()) {
+    return true;
+  }
+
+  medicationFormBlockMessage();
+  return false;
+}
 
 function requestCloseAllWindows() {
   const cards = Array.from(document.querySelectorAll("main section.card"));
@@ -128,6 +294,9 @@ function requestCloseAllWindows() {
     if (!isExpanded) {
       return;
     }
+    if (!canCollapseMedicationForm(card)) {
+      return;
+    }
     card.classList.add("is-collapsed");
     toggle.setAttribute("aria-expanded", "false");
     closedCount += 1;
@@ -140,6 +309,104 @@ function requestCloseAllWindows() {
   }
 }
 
+function normalizedSearchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function medicationSearchMatches(query) {
+  const normalizedQuery = normalizedSearchText(query);
+  if (!normalizedQuery) return [];
+
+  const meds = medsForActiveProfile();
+  const exactMatches = meds.filter((med) => normalizedSearchText(med.name) === normalizedQuery);
+  if (exactMatches.length === 1) return exactMatches;
+
+  return meds.filter((med) => normalizedSearchText(med.name).includes(normalizedQuery));
+}
+
+function closeMedicationSearch(message = "") {
+  dom.searchMedForm?.classList.add("hidden");
+  if (dom.searchMedInput) {
+    dom.searchMedInput.blur?.();
+    dom.searchMedInput.value = "";
+  }
+  if (dom.searchMedStatus) {
+    dom.searchMedStatus.textContent = "";
+  }
+  if (dom.searchMedResults) {
+    dom.searchMedResults.replaceChildren();
+  }
+  if (message && dom.safetyMessage) {
+    dom.safetyMessage.textContent = message;
+  }
+}
+
+function selectMedicationSearchMatch(med) {
+  closeMedicationSearch(`Showing ${med.name}.`);
+  renderMeds(medsForActiveProfile());
+  rendererApi.jumpToMedication(med.id, { behavior: "auto", scrollDelay: 0, prioritize: true });
+}
+
+function renderMedicationSearchMatches(matches) {
+  if (!dom.searchMedResults) {
+    return;
+  }
+
+  dom.searchMedResults.replaceChildren();
+  matches.forEach((med) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "search-result-btn";
+    button.textContent = `${med.name}${med.strength ? ` ${med.strength}` : ""}`;
+    button.addEventListener("click", () => selectMedicationSearchMatch(med));
+    dom.searchMedResults.appendChild(button);
+  });
+}
+
+function openMedicationSearch() {
+  cancelMedicationFormJump();
+  dom.searchMedForm?.classList.remove("hidden");
+  if (dom.searchMedStatus) {
+    dom.searchMedStatus.textContent = "Type a medication name.";
+  }
+  dom.searchMedInput?.focus();
+}
+
+function resolveMedicationSearch() {
+  cancelMedicationFormJump();
+  const query = dom.searchMedInput?.value || "";
+  const normalizedQuery = normalizedSearchText(query);
+  if (!normalizedQuery) {
+    dom.searchMedResults?.replaceChildren();
+    if (dom.searchMedStatus) {
+      dom.searchMedStatus.textContent = "Type a medication name.";
+    }
+    return;
+  }
+
+  const matches = medicationSearchMatches(query);
+  renderMedicationSearchMatches(matches);
+
+  if (dom.searchMedStatus) {
+    dom.searchMedStatus.textContent = matches.length === 0
+      ? "No medication found."
+      : matches.length === 1
+        ? "Tap the medicine to open it."
+        : `${matches.length} matches. Tap the medicine you want.`;
+  }
+}
+
+  function submitMedicationSearch() {
+    const query = dom.searchMedInput?.value || "";
+    const matches = medicationSearchMatches(query);
+    if (matches.length === 1) {
+      selectMedicationSearchMatch(matches[0]);
+      return;
+    }
+
+    resolveMedicationSearch();
+  }
+
 function makeId() {
   if (crypto?.randomUUID) {
     return crypto.randomUUID();
@@ -151,6 +418,7 @@ function defaultProfile() {
   return {
     id: makeId(),
     name: "Primary User",
+    emergencyContactName: "",
     emergencyPhone: "",
     caregiverName: "",
     caregiverPhone: "",
@@ -159,7 +427,16 @@ function defaultProfile() {
     bloodGroup: "",
     conditions: "",
     allergies: "",
-    voiceLang: "en-US"
+    voiceLang: "en-US",
+    timingPresets: [
+      { key: "wake_up", label: "When I wake up", time: "07:00" },
+      { key: "before_breakfast", label: "Half hour before breakfast", time: "07:30" },
+      { key: "breakfast", label: "Breakfast", time: "08:00" },
+      { key: "mid_morning", label: "Mid morning", time: "10:00" },
+      { key: "mid_afternoon", label: "Mid afternoon", time: "15:00" },
+      { key: "dinner", label: "Dinner", time: "18:00" },
+      { key: "sleep", label: "Before going to sleep", time: "22:00" }
+    ]
   };
 }
 
@@ -195,20 +472,89 @@ function medsForActiveProfile() {
   return stateApi.medsForActiveProfile(state);
 }
 
+function activeMedsForActiveProfile() {
+  if (typeof stateApi.activeMedsForActiveProfile === "function") {
+    return stateApi.activeMedsForActiveProfile(state);
+  }
+  return medsForActiveProfile().filter((med) => med.status !== "stopped");
+}
+
 function proceduresForActiveProfile() {
   return stateApi.proceduresForActiveProfile(state);
 }
 
+function bloodPressureLogsForActiveProfile() {
+  if (typeof stateApi.bloodPressureLogsForActiveProfile === "function") {
+    return stateApi.bloodPressureLogsForActiveProfile(state);
+  }
+
+  const savedLogs = parseJSON(localStorage.getItem(BLOOD_PRESSURE_STORAGE_KEY) || "[]");
+  return Array.isArray(savedLogs) ? savedLogs.filter((entry) => entry.profileId === state.activeProfileId) : [];
+}
+
+function saveBloodPressureLogs() {
+  const savedLogs = Array.isArray(state.bloodPressureLogs) ? state.bloodPressureLogs : [];
+  localStorage.setItem(BLOOD_PRESSURE_STORAGE_KEY, JSON.stringify(savedLogs));
+}
+
+function handleBloodPressureSubmitFallback(event) {
+  event.preventDefault();
+  const formData = new FormData(dom.bpForm);
+  const timestampRaw = String(formData.get("readingTimestamp") || "").trim();
+  const pressure = String(formData.get("pressure") || "").trim();
+  const pulseRaw = String(formData.get("pulse") || "").trim();
+  const notes = String(formData.get("notes") || "").trim();
+  const timestamp = new Date(timestampRaw);
+
+  if (!timestampRaw || Number.isNaN(timestamp.getTime()) || !pressure) {
+    dom.bpMessage.textContent = "Please enter a date and time and pressure.";
+    return;
+  }
+
+  const pulse = pulseRaw === "" ? "" : Number(pulseRaw);
+  if (pulseRaw !== "" && (!Number.isFinite(pulse) || pulse <= 0)) {
+    dom.bpMessage.textContent = "Please enter a valid pulse, or leave it blank.";
+    return;
+  }
+
+  const logs = bloodPressureLogsForActiveProfile();
+  const existingReading = editingBloodPressureId ? logs.find((entry) => entry.id === editingBloodPressureId) : null;
+  const savedAt = new Date().toISOString();
+  const reading = {
+    id: existingReading?.id || makeId(),
+    profileId: existingReading?.profileId || state.activeProfileId,
+    timestamp: timestamp.toISOString(),
+    pressure,
+    pulse: pulse === "" ? "" : String(Math.round(pulse)),
+    notes,
+    createdAt: existingReading?.createdAt || savedAt,
+    updatedAt: savedAt
+  };
+
+  state.bloodPressureLogs = existingReading
+    ? logs.map((entry) => (entry.id === existingReading.id ? reading : entry))
+    : [...logs, reading];
+  saveBloodPressureLogs();
+  saveState();
+  dom.bpMessage.textContent = existingReading ? "Blood pressure reading updated." : "Blood pressure reading saved.";
+  resetBloodPressureForm();
+  resetBloodPressureEditMode();
+  renderAll();
+}
+
 function toDateKey(date) {
-  return date.toISOString().slice(0, 10);
+  const localYear = date.getFullYear();
+  const localMonth = String(date.getMonth() + 1).padStart(2, '0');
+  const localDay = String(date.getDate()).padStart(2, '0');
+  return `${localYear}-${localMonth}-${localDay}`;
 }
 
 function parseDosePlan(raw) {
-  return stateApi.parseDosePlan(raw);
+  return stateApi.parseDosePlan(raw, getActiveProfile().timingPresets);
 }
 
 function parseTimes(raw) {
-  return stateApi.parseTimes(raw);
+  return stateApi.parseTimes(raw, getActiveProfile().timingPresets);
 }
 
 function normalizeDosePlan(value) {
@@ -224,7 +570,113 @@ function getDoseQuantityForTime(med, time) {
 }
 
 function formatDosePlan(med) {
-  return stateApi.formatDosePlan(med);
+  return stateApi.formatDosePlan(med, getActiveProfile().timingPresets);
+}
+
+function activeTimingPresets() {
+  return stateApi.parseTimingPresets(getActiveProfile().timingPresets);
+}
+
+function liveTimingPickerMenu(id) {
+  return document.getElementById(id);
+}
+
+function liveTimingPickerButton(selector) {
+  return document.querySelector(selector);
+}
+
+function populateTimingPresetMenu(menu, presets, onSelect) {
+  if (!menu) {
+    return;
+  }
+
+  menu.innerHTML = "";
+  presets.forEach((preset) => {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "timing-picker-option";
+    option.textContent = `${preset.label} (${preset.time})`;
+    option.addEventListener("click", () => {
+      onSelect?.(preset);
+    });
+    menu.appendChild(option);
+  });
+
+  if (presets.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "muted";
+    empty.textContent = "No timing labels are set up for this profile.";
+    menu.appendChild(empty);
+  }
+}
+
+function refreshTimingPresetPickers() {
+  const presets = activeTimingPresets();
+  const timesMenu = liveTimingPickerMenu("medTimesPresetMenu");
+  const doseMenu = liveTimingPickerMenu("medDosePlanPresetMenu");
+  const timesButton = liveTimingPickerButton("[data-timing-picker='medTimesPresetButton']");
+  const doseButton = liveTimingPickerButton("[data-timing-picker='medDosePlanPresetButton']");
+
+  populateTimingPresetMenu(timesMenu, presets, (preset) => {
+    appendScheduleToken(dom.medForm?.times, preset.label);
+    closeTimingPresetMenus();
+    updateMedicationSubmitState();
+  });
+  populateTimingPresetMenu(doseMenu, presets, (preset) => {
+    const pillsPerDose = Number(dom.medForm?.pillsPerDose?.value || 1);
+    const suffix = Number.isFinite(pillsPerDose) && pillsPerDose > 0 ? `=${pillsPerDose}` : "=1";
+    appendScheduleToken(dom.medForm?.dosePlan, preset.label, suffix);
+    closeTimingPresetMenus();
+    updateMedicationSubmitState();
+  });
+  if (timesButton) {
+    timesButton.disabled = presets.length === 0;
+  }
+  if (doseButton) {
+    doseButton.disabled = presets.length === 0;
+  }
+}
+
+function closeTimingPresetMenus() {
+  [liveTimingPickerMenu("medTimesPresetMenu"), liveTimingPickerMenu("medDosePlanPresetMenu")].forEach((menu) => {
+    if (menu) {
+      menu.hidden = true;
+    }
+  });
+  [liveTimingPickerButton("[data-timing-picker='medTimesPresetButton']"), liveTimingPickerButton("[data-timing-picker='medDosePlanPresetButton']")].forEach((button) => {
+    if (button) {
+      button.setAttribute("aria-expanded", "false");
+    }
+  });
+}
+
+function toggleTimingPresetMenu(menuId, buttonSelector) {
+  const menu = liveTimingPickerMenu(menuId);
+  const button = liveTimingPickerButton(buttonSelector);
+  if (!menu || !button || button.disabled) {
+    return;
+  }
+
+  const shouldOpen = menu.hidden;
+  closeTimingPresetMenus();
+  menu.hidden = !shouldOpen ? true : false;
+  button.setAttribute("aria-expanded", String(shouldOpen));
+}
+
+function appendScheduleToken(field, token, suffix = "") {
+  if (!field || !token) {
+    return;
+  }
+
+  const current = String(field.value || "").trim();
+  const nextToken = suffix ? `${token}${suffix}` : token;
+  if (!current) {
+    field.value = nextToken;
+    return;
+  }
+
+  const separator = current.endsWith(",") ? " " : ", ";
+  field.value = `${current}${separator}${nextToken}`;
 }
 
 function serializeDosePlan(med) {
@@ -291,7 +743,7 @@ function markDose(dose, status, options = {}) {
     }
 
     const previous = lastTakenForMed(med.id);
-    if (previous?.timestamp && !options.add .force) {
+    if (previous?.timestamp && !options.force) {
       const minGapMs = minHoursBetweenDoses(med) * 60 * 60 * 1000;
       const gap = new Date() - new Date(previous.timestamp);
       if (gap < minGapMs) {
@@ -324,9 +776,46 @@ function untakeDose(dose) {
 }
 
 function logPrnDose(med) {
-  const dose = stateApi.logPrnDose(state, med);
+  pendingPrnLogMedication = med;
+  if (dom.prnLogTitle) {
+    dom.prnLogTitle.textContent = `Log ${med.name}`;
+  }
+  if (dom.prnLogHint) {
+    dom.prnLogHint.textContent = `Enter how many minutes ago you took ${med.name}.`;
+  }
+  if (dom.prnMinutesAgoInput) {
+    dom.prnMinutesAgoInput.value = "0";
+    dom.prnMinutesAgoInput.focus();
+    dom.prnMinutesAgoInput.select();
+  }
+  if (dom.prnLogDialog && typeof dom.prnLogDialog.showModal === "function") {
+    dom.prnLogDialog.showModal();
+    return;
+  }
+
+  dom.safetyMessage.textContent = "Unable to open the PRN log dialog.";
+}
+
+function submitPrnLogDose() {
+  const med = pendingPrnLogMedication;
+  if (!med) {
+    return;
+  }
+
+  const minutesAgo = Number(String(dom.prnMinutesAgoInput?.value || "0").trim());
+  if (!Number.isFinite(minutesAgo) || minutesAgo < 0) {
+    dom.safetyMessage.textContent = "Please enter a valid number of minutes ago, or cancel.";
+    dom.prnMinutesAgoInput?.focus();
+    return;
+  }
+
+  const dose = stateApi.logPrnDose(state, med, { minutesAgo, saveState });
+  pendingPrnLogMedication = null;
+  dom.prnLogDialog?.close();
   renderAll();
-  dom.safetyMessage.textContent = `Logged ${med.name} at ${dose.time}.`;
+  dom.safetyMessage.textContent = minutesAgo > 0
+    ? `Logged ${med.name} ${minutesAgo} minute${minutesAgo === 1 ? "" : "s"} ago at ${dose.time}.`
+    : `Logged ${med.name} at ${dose.time}.`;
 }
 
 function overduePendingDoses() {
@@ -350,12 +839,27 @@ function catchUpOverdueDoses() {
   });
 
   if (caughtUpCount === 0) {
+    updateCatchUpButtonState();
     dom.safetyMessage.textContent = "No overdue pending doses to catch up.";
     return;
   }
 
   renderAll();
   dom.safetyMessage.textContent = `Caught up ${caughtUpCount} overdue dose(s).`;
+}
+
+function updateCatchUpButtonState() {
+  if (!dom.catchUpBtn) {
+    return;
+  }
+
+  const overdueCount = overduePendingDoses().length;
+  dom.catchUpBtn.disabled = overdueCount === 0;
+  dom.catchUpBtn.textContent = overdueCount === 0 ? "Caught Up" : "Catch Up Overdue";
+  dom.catchUpBtn.setAttribute(
+    "aria-label",
+    overdueCount === 0 ? "All overdue doses are caught up" : `Catch up ${overdueCount} overdue dose${overdueCount === 1 ? "" : "s"}`
+  );
 }
 
 function isMorningDose(dose) {
@@ -441,6 +945,33 @@ function resetProcedureEditMode() {
   }
 }
 
+function currentDatetimeLocalValue() {
+  const now = new Date();
+  const offsetMilliseconds = now.getTimezoneOffset() * 60 * 1000;
+  return new Date(now.getTime() - offsetMilliseconds).toISOString().slice(0, 16);
+}
+
+function resetBloodPressureForm() {
+  if (!dom.bpForm) {
+    return;
+  }
+
+  dom.bpForm.reset();
+  const timestampField = dom.bpForm.querySelector('[name="readingTimestamp"]');
+  if (timestampField) {
+    autoFilledBloodPressureTimestamp = currentDatetimeLocalValue();
+    timestampField.value = autoFilledBloodPressureTimestamp;
+  }
+}
+
+function resetBloodPressureEditMode() {
+  editingBloodPressureId = null;
+  if (dom.bpSubmitBtn) {
+    dom.bpSubmitBtn.textContent = "Save Reading";
+  }
+  dom.bpCancelEditBtn?.classList.add("hidden");
+}
+
 function renderProcedures() {
   rendererApi.renderProcedures(proceduresForActiveProfile(), {
     dom,
@@ -450,6 +981,24 @@ function renderProcedures() {
     },
     state,
     saveState,
+    renderAll
+  });
+}
+
+function renderBloodPressureLogs() {
+  const logs = bloodPressureLogsForActiveProfile();
+  state.bloodPressureLogs = logs.slice();
+  rendererApi.renderBloodPressureLogs(logs, {
+    dom,
+    setEditingBloodPressureId: (id) => {
+      editingBloodPressureId = id;
+      autoFilledBloodPressureTimestamp = "";
+    },
+    state,
+    saveState: () => {
+      saveBloodPressureLogs();
+      saveState();
+    },
     renderAll
   });
 }
@@ -475,6 +1024,7 @@ function renderMeds(meds) {
     dom,
     daysLeft,
     formatDosePlan,
+    formatTimeWithLabel: (time) => stateApi.profileTimingLabelForTime(getActiveProfile(), time),
     includesDay,
     friendlyFoodRule,
     friendlyFrequency,
@@ -483,6 +1033,19 @@ function renderMeds(meds) {
     doseUnit,
     refillFlag,
     friendlyForm,
+    timingPresets: getActiveProfile().timingPresets,
+    beginMedicationFormSync: () => {
+      medicationFormSyncing = true;
+    },
+    endMedicationFormSync: () => {
+      medicationFormSyncing = false;
+    },
+    clearMedicationFormDirty: () => {
+      setMedicationFormDirty(false);
+    },
+    clearMedicationSavedStatus,
+    cancelMedicationFormJump,
+    scheduleMedicationFormJump,
     setEditingMedicationId: (id) => {
       editingMedicationId = id;
     },
@@ -491,10 +1054,26 @@ function renderMeds(meds) {
     openMedicationFormCard,
     refreshMedicationSubmitState: updateMedicationSubmitState,
     logPrnDose,
+    lastTakenForMed,
+    minHoursBetweenDoses,
+    toggleMedicationStatus,
     state,
     saveState,
     renderAll
   });
+}
+
+function toggleMedicationStatus(med) {
+  if (!med) {
+    return;
+  }
+
+  med.status = med.status === "stopped" ? "active" : "stopped";
+  saveState();
+  renderAll();
+  dom.safetyMessage.textContent = med.status === "stopped"
+    ? `${med.name} marked as Stopped. It stays in the Medication List but is hidden from reminders and the Emergency Card.`
+    : `${med.name} reactivated.`;
 }
 
 function medicationRequiredFieldsComplete(form) {
@@ -521,17 +1100,75 @@ function medicationRequiredFieldsComplete(form) {
   return requiredFields.every((field) => String(field.value || "").trim().length > 0);
 }
 
+function medicationValidationState(form) {
+  const missingFields = [];
+  let firstInvalidField = null;
+  if (!form) {
+    return { valid: false, missingFields, firstInvalidField };
+  }
+
+  const requiredSelector = "[required], [data-required='true']";
+  let requiredFields = Array.from(form.querySelectorAll(requiredSelector));
+
+  try {
+    const frequency = String((form.frequency && form.frequency.value) || "").trim();
+    if (frequency === "asRequired") {
+      requiredFields = requiredFields.filter((field) => !(field.name === "times"));
+    }
+  } catch (e) {
+    // ignore and proceed with original required fields
+  }
+
+  requiredFields.forEach((field) => {
+    if (!String(field.value || "").trim()) {
+      if (!firstInvalidField) {
+        firstInvalidField = field;
+      }
+      const row = field.closest(".form-row") || field.parentElement;
+      const label = row?.querySelector("label")?.textContent?.replace(/Required/g, "").trim()
+        || field.getAttribute("aria-label")
+        || field.name
+        || "Required field";
+      if (!missingFields.includes(label)) {
+        missingFields.push(label);
+      }
+    }
+  });
+
+  if (String(form.frequency?.value || "").trim() === "asRequired") {
+    const gapField = form.minGapHours;
+    const gapHours = Number(gapField?.value);
+    if (gapField && String(gapField.value || "").trim() !== "" && (!Number.isFinite(gapHours) || gapHours < 0)) {
+      if (!firstInvalidField) {
+        firstInvalidField = gapField;
+      }
+      if (!missingFields.includes("Minimum gap between doses")) {
+        missingFields.push("Minimum gap between doses");
+      }
+    }
+  }
+
+  return { valid: missingFields.length === 0, missingFields, firstInvalidField };
+}
+
 function updateMedicationSubmitState() {
   if (!dom.medSubmitBtn || !dom.medForm) {
     return;
   }
-  const disabled = !medicationRequiredFieldsComplete(dom.medForm);
+  const validation = medicationValidationState(dom.medForm);
+  const disabled = !validation.valid;
   dom.medSubmitBtn.disabled = disabled;
   dom.medSubmitBtn.setAttribute("aria-disabled", String(disabled));
+  if (dom.safetyMessage) {
+    dom.safetyMessage.textContent = validation.valid
+      ? ""
+      : `Please fill: ${validation.missingFields.join(", ")}.`;
+  }
 }
 
 function resetMedicationEditMode() {
   editingMedicationId = null;
+  setMedicationFormDirty(false);
   if (dom.medSubmitBtn) {
     dom.medSubmitBtn.textContent = "Save Medication";
   }
@@ -542,6 +1179,20 @@ function resetMedicationEditMode() {
     dom.medForm.startDate.value = toDateKey(new Date());
   }
   updateMedicationSubmitState();
+  updateMedicationAbandonButtonState();
+}
+
+function abandonMedicationChanges() {
+  medicationFormSyncing = true;
+  dom.medForm.reset();
+  resetMedicationEditMode();
+  clearMedicationFormPreview();
+  flashMedicationStatus("Changes abandoned.");
+  if (dom.safetyMessage) {
+    dom.safetyMessage.textContent = "";
+  }
+  updateMedicationSubmitState();
+  medicationFormSyncing = false;
 }
 
 function renderTimeline(todayDoses, meds) {
@@ -564,6 +1215,7 @@ function renderAdherence(todayDoses) {
     state,
     overduePendingDoses
   });
+  updateCatchUpButtonState();
 }
 
 function maybeNotifyRefill(meds) {
@@ -580,7 +1232,7 @@ function showAlarm(dose, med) {
 
   activeAlarmDoseId = dose.id;
   dom.alarmTitle.textContent = `Reminder: ${med.name}`;
-  dom.alarmMessage.textContent = stateApi.buildAlarmDisplayMessage(dose, med);
+  dom.alarmMessage.textContent = stateApi.buildAlarmDisplayMessage(dose, med, getActiveProfile().timingPresets);
   dom.alarmOverlay.classList.remove("hidden");
 
   if (navigator.vibrate) {
@@ -754,6 +1406,7 @@ function syncProfileForm() {
   const profile = getActiveProfile();
   const form = dom.profileForm;
   form.profileName.value = profile.name || "";
+  form.emergencyContactName.value = profile.emergencyContactName || "";
   form.emergencyPhone.value = profile.emergencyPhone || "";
   form.caregiverName.value = profile.caregiverName || "";
   form.caregiverPhone.value = profile.caregiverPhone || "";
@@ -763,6 +1416,10 @@ function syncProfileForm() {
   form.conditions.value = profile.conditions || "";
   form.allergies.value = profile.allergies || "";
   form.voiceLang.value = profile.voiceLang || "en-US";
+  if (form.timingPresets) {
+    form.timingPresets.value = stateApi.formatTimingPresets(profile.timingPresets);
+  }
+  refreshTimingPresetPickers();
 
   const hasTwoProfiles = state.profiles.length >= 2;
   dom.addProfileBtn.disabled = hasTwoProfiles;
@@ -778,9 +1435,33 @@ function emergencyDoseAbbrev(med) {
 
 function updateMedicalCard() {
   const profile = getActiveProfile();
-  const meds = medsForActiveProfile();
+  const meds = activeMedsForActiveProfile();
+  const emergencyContact = [profile.emergencyContactName, profile.emergencyPhone]
+    .filter(Boolean)
+    .join(": ") || "Not recorded";
   dom.medicalCardText.textContent = stateApi.buildMedicalCardText(profile, meds);
+  dom.lockScreenCardName.textContent = profile.name || "Medical Card";
+  dom.lockScreenCardText.textContent = [
+    `Emergency contact: ${emergencyContact}`,
+    "",
+    `Blood group: ${profile.bloodGroup || "Unknown"}`,
+    `Conditions: ${profile.conditions || "None known"}`,
+    `Allergies: ${profile.allergies || "None known"}`,
+    "",
+    meds.length
+      ? `Medicines: ${meds.map((med) => `${med.frequency === "asRequired" ? "* " : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`).join("; ")}${meds.some((med) => med.frequency === "asRequired") ? " [* means as needed]" : ""}`
+      : "Medicines: None recorded",
+  ].join("\n");
   dom.emergencyCallLink.href = profile.emergencyPhone ? `tel:${profile.emergencyPhone}` : "#";
+}
+
+function fitLockScreenCardText() {
+  const text = dom.lockScreenCardText;
+  text.style.fontSize = "";
+  for (let size = 15; size >= 10; size -= 1) {
+    text.style.fontSize = `${size}px`;
+    if (text.scrollHeight <= text.clientHeight) return;
+  }
 }
 
 function recoverProfileMedicationVisibility() {
@@ -791,20 +1472,23 @@ function recoverProfileMedicationVisibility() {
 }
 
 function renderAll() {
+  const activeMeds = activeMedsForActiveProfile();
+  const allMeds = medsForActiveProfile();
   rendererApi.renderAll({
     recoverProfileMedicationVisibility,
     state,
     enablePopupReminders: ENABLE_POPUP_REMINDERS,
     hideAlarm,
-    medsForActiveProfile,
+    medsForActiveProfile: activeMedsForActiveProfile,
     createDueDosesForDate,
-    renderRunningOut,
-    renderOrderPriority,
-    renderMeds,
+    renderRunningOut: () => renderRunningOut(activeMeds),
+    renderOrderPriority: () => renderOrderPriority(activeMeds),
+    renderMeds: () => renderMeds(allMeds),
     renderProcedures,
-    renderTimeline,
+    renderBloodPressureLogs,
+    renderTimeline: (todayDoses, meds) => renderTimeline(todayDoses, activeMeds),
     renderAdherence,
-    maybeNotifyRefill,
+    maybeNotifyRefill: () => maybeNotifyRefill(activeMeds),
     syncProfileForm,
     updateMedicalCard
   });
@@ -929,11 +1613,22 @@ function exportAmPmList() {
 }
 
 function exportBackup() {
-  downloadTextFile("medication-backup.json", JSON.stringify(state, null, 2), "application/json");
+  const backup = {
+    schemaVersion: 2,
+    state
+  };
+  downloadTextFile("medication-backup.json", JSON.stringify(backup, null, 2), "application/json");
 }
 
 function normalizeImportedBackup(parsed) {
   return stateApi.normalizeImportedBackup(parsed, {
+    makeId,
+    todayDateKey: toDateKey(new Date())
+  });
+}
+
+function restoreImportedBackup(parsed) {
+  return stateApi.restoreImportedBackup(parsed, {
     makeId,
     todayDateKey: toDateKey(new Date())
   });
@@ -946,11 +1641,11 @@ async function importBackup(file) {
   try {
     const text = await file.text();
     const parsed = JSON.parse(text);
-    const normalized = normalizeImportedBackup(parsed);
-    if (!normalized) {
+    const restored = restoreImportedBackup(parsed);
+    if (!restored) {
       throw new Error("Invalid backup file");
     }
-    state = normalized;
+    state = restored;
     saveState();
     renderAll();
     dom.safetyMessage.textContent = "Backup restored.";
@@ -964,6 +1659,10 @@ async function importBackup(file) {
 }
 
 function switchUser() {
+  if (medicationFormHasPendingChanges()) {
+    medicationFormBlockMessage();
+    return;
+  }
   if (state.profiles.length < 2) {
     dom.safetyMessage.textContent = "Only one user exists. Use Add Second User first.";
     return;
@@ -1010,6 +1709,11 @@ function setupCollapsibleCards() {
 
     toggleBtn.addEventListener("click", () => {
       const collapsed = card.classList.toggle("is-collapsed");
+      if (collapsed && !canCollapseMedicationForm(card)) {
+        card.classList.remove("is-collapsed");
+        toggleBtn.setAttribute("aria-expanded", "true");
+        return;
+      }
       toggleBtn.setAttribute("aria-expanded", String(!collapsed));
     });
 
@@ -1030,7 +1734,13 @@ function bindCardToggleDelegation() {
     const card = toggle.closest('section.card');
     if (!card) return;
     const collapsed = card.classList.toggle('is-collapsed');
+    if (collapsed && !canCollapseMedicationForm(card)) {
+      card.classList.remove('is-collapsed');
+      toggle.setAttribute('aria-expanded', 'true');
+      return;
+    }
     toggle.setAttribute('aria-expanded', String(!collapsed));
+    renderAll();
   });
 }
 
@@ -1042,7 +1752,13 @@ function attachPerToggleListeners() {
       const card = toggle.closest('section.card');
       if (!card) return;
       const collapsed = card.classList.toggle('is-collapsed');
+      if (collapsed && !canCollapseMedicationForm(card)) {
+        card.classList.remove('is-collapsed');
+        toggle.setAttribute('aria-expanded', 'true');
+        return;
+      }
       toggle.setAttribute('aria-expanded', String(!collapsed));
+      renderAll();
     });
     toggle.dataset.toggleListener = 'true';
   });
@@ -1070,11 +1786,13 @@ function bindEvents() {
 
         row.classList.add("compulsory-field");
 
+        const chipHost = row.querySelector(".required-row") || row;
+
         if (!row.querySelector(".compulsory-chip")) {
           const chip = document.createElement("span");
           chip.className = "compulsory-chip";
           chip.textContent = "Required";
-          row.insertBefore(chip, row.firstChild);
+          chipHost.insertBefore(chip, chipHost.firstChild);
         }
       });
     });
@@ -1085,19 +1803,22 @@ function bindEvents() {
   function syncTimesRequirement() {
     const freqField = dom.medForm?.frequency;
     const timesField = dom.medForm?.times;
+    const gapField = dom.medForm?.minGapHours;
+    const gapRow = gapField?.closest("label");
     if (!freqField || !timesField) {
       return;
     }
 
     const isPrn = String(freqField.value || "").trim() === "asRequired";
     const row = timesField.closest(".form-row") || timesField.parentElement;
+    const chipHost = row?.querySelector(".required-row") || row;
 
     if (isPrn) {
       timesField.removeAttribute("required");
       timesField.removeAttribute("data-required");
       if (row) {
         row.classList.remove("compulsory-field");
-        const chip = row.querySelector(".compulsory-chip");
+        const chip = chipHost?.querySelector(".compulsory-chip");
         if (chip) {
           chip.remove();
         }
@@ -1107,12 +1828,20 @@ function bindEvents() {
       timesField.setAttribute("data-required", "true");
       if (row) {
         row.classList.add("compulsory-field");
-        if (!row.querySelector(".compulsory-chip")) {
+        if (chipHost && !chipHost.querySelector(".compulsory-chip")) {
           const chip = document.createElement("span");
           chip.className = "compulsory-chip";
           chip.textContent = "Required";
-          row.insertBefore(chip, row.firstChild);
+          chipHost.insertBefore(chip, chipHost.firstChild);
         }
+      }
+    }
+
+    if (gapField) {
+      if (isPrn) {
+        gapRow?.classList.remove("hidden");
+      } else {
+        gapRow?.classList.add("hidden");
       }
     }
 
@@ -1159,24 +1888,47 @@ function bindEvents() {
     }
   }
 
+  document.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("[data-timing-picker='medTimesPresetButton']")) {
+      toggleTimingPresetMenu("medTimesPresetMenu", "[data-timing-picker='medTimesPresetButton']");
+      return;
+    }
+    if (target?.closest("[data-timing-picker='medDosePlanPresetButton']")) {
+      toggleTimingPresetMenu("medDosePlanPresetMenu", "[data-timing-picker='medDosePlanPresetButton']");
+      return;
+    }
+    if (!target?.closest(".timing-picker-row") && !target?.closest(".timing-picker-menu")) {
+      closeTimingPresetMenus();
+    }
+  }, true);
+
   dom.medForm?.frequency?.addEventListener("change", syncTimesRequirement);
   dom.medForm?.times?.addEventListener("blur", syncDosePlanToTimes);
   dom.medForm?.pillsPerDose?.addEventListener("change", syncDosePlanToPillsPerDose);
+  dom.medForm?.addEventListener("input", markMedicationFormDirty);
+  dom.medForm?.addEventListener("change", markMedicationFormDirty);
   dom.medForm?.addEventListener("reset", () => {
     window.setTimeout(syncTimesRequirement, 0);
   });
   syncTimesRequirement();
 
   dom.profileForm.addEventListener("submit", (event) => {
+    getActiveProfile().emergencyContactName = String(dom.profileForm.emergencyContactName.value || "").trim();
     formsApi.handleProfileSubmit(event, {
       dom,
       getActiveProfile,
+      parseTimingPresets: stateApi.parseTimingPresets,
       saveState,
       renderAll
     });
   });
 
   dom.addProfileBtn.addEventListener("click", () => {
+    if (medicationFormHasPendingChanges()) {
+      medicationFormBlockMessage();
+      return;
+    }
     if (state.profiles.length >= 2) {
       dom.safetyMessage.textContent = "Multi-user mode supports up to two users in this version.";
       return;
@@ -1192,7 +1944,7 @@ function bindEvents() {
   dom.switchProfileBtn.addEventListener("click", switchUser);
 
   function markValidationErrors(form) {
-    let valid = true;
+    const validation = medicationValidationState(form);
     const requiredSelector = "[required], [data-required='true']";
     form.querySelectorAll(requiredSelector).forEach((el) => {
       const val = String(el.value || "").trim();
@@ -1206,7 +1958,6 @@ function bindEvents() {
       if (!val) {
         el.classList.add("field-error");
         if (msg) { msg.textContent = "Required"; msg.classList.add("visible"); }
-        valid = false;
       } else {
         el.classList.remove("field-error");
         if (msg) { msg.classList.remove("visible"); }
@@ -1218,7 +1969,7 @@ function bindEvents() {
         }
       }, { once: false });
     });
-    return valid;
+    return validation;
   }
 
   dom.medForm.addEventListener("input", updateMedicationSubmitState);
@@ -1226,10 +1977,17 @@ function bindEvents() {
 
   dom.medForm.addEventListener("submit", async (event) => {
     // Client-side highlight for required fields; stop submission if invalid.
-    const ok = markValidationErrors(dom.medForm);
-    if (!ok) {
+    const validation = markValidationErrors(dom.medForm);
+    if (!validation.valid) {
       event.preventDefault();
-      dom.safetyMessage.textContent = "Please fill required fields.";
+      const missingText = validation.missingFields.length > 0
+        ? `Please fill: ${validation.missingFields.join(", ")}.`
+        : "Please fill required fields.";
+      dom.safetyMessage.textContent = missingText;
+      const toolbar = document.getElementById("medFormToolbar");
+      toolbar?.scrollIntoView({ behavior: "smooth", block: "start" });
+      validation.firstInvalidField?.focus?.({ preventScroll: true });
+      validation.firstInvalidField?.scrollIntoView?.({ behavior: "smooth", block: "center" });
       return;
     }
     await formsApi.handleMedicationSubmit(event, {
@@ -1240,7 +1998,7 @@ function bindEvents() {
       toDateKey,
       isValidDateKey: stateApi.isValidDateKey,
       parseDosePlan,
-      parseTimes: stateApi.parseTimes,
+      parseTimes,
       parseWeeklyDays: stateApi.parseWeeklyDays,
       makeId,
       checkSafetyForNewMed,
@@ -1427,10 +2185,7 @@ function bindEvents() {
   window.__checkStorageWarning = checkStorageWarning;
 
   dom.medCancelEditBtn?.addEventListener("click", () => {
-    dom.medForm.reset();
-    resetMedicationEditMode();
-    dom.safetyMessage.textContent = "Edit cancelled.";
-    updateMedicationSubmitState();
+    abandonMedicationChanges();
   });
 
   dom.procedureForm.addEventListener("submit", (event) => {
@@ -1450,6 +2205,42 @@ function bindEvents() {
     dom.procedureForm.reset();
     resetProcedureEditMode();
     dom.procedureMessage.textContent = "Edit cancelled.";
+  });
+
+  dom.bpForm?.addEventListener("submit", (event) => {
+    if (typeof formsApi.handleBloodPressureSubmit !== "function") {
+      handleBloodPressureSubmitFallback(event);
+      return;
+    }
+
+    formsApi.handleBloodPressureSubmit(event, {
+      dom,
+      state,
+      editingBloodPressureId,
+      makeId,
+      saveState,
+      resetBloodPressureEditMode,
+      renderAll
+    });
+  });
+
+  dom.bpForm?.addEventListener("focusin", () => {
+    if (!autoFilledBloodPressureTimestamp || editingBloodPressureId) {
+      return;
+    }
+
+    const formData = new FormData(dom.bpForm);
+    const hasEnteredReadingData = ["pressure", "pulse", "notes"].some((field) => String(formData.get(field) || "").trim() !== "");
+    if (!hasEnteredReadingData && dom.bpForm.readingTimestamp.value === autoFilledBloodPressureTimestamp) {
+      autoFilledBloodPressureTimestamp = currentDatetimeLocalValue();
+      dom.bpForm.readingTimestamp.value = autoFilledBloodPressureTimestamp;
+    }
+  });
+
+  dom.bpCancelEditBtn?.addEventListener("click", () => {
+    resetBloodPressureForm();
+    resetBloodPressureEditMode();
+    dom.bpMessage.textContent = "Edit cancelled.";
   });
 
   dom.alarmTakenBtn.addEventListener("click", () => {
@@ -1492,8 +2283,53 @@ function bindEvents() {
   });
 
   dom.closeAllBtn?.addEventListener("click", requestCloseAllWindows);
+  dom.searchMedBtn?.addEventListener("click", openMedicationSearch);
+  dom.searchMedInput?.addEventListener("input", resolveMedicationSearch);
+  dom.searchMedForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitMedicationSearch();
+  });
+  dom.cancelSearchMedBtn?.addEventListener("click", () => closeMedicationSearch("Search cancelled."));
+  dom.searchMedInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeMedicationSearch("Search cancelled.");
+    }
+  });
   dom.emergencyBtn.addEventListener("click", () => dom.emergencyDialog.showModal());
   dom.closeEmergencyBtn.addEventListener("click", () => dom.emergencyDialog.close());
+  dom.openLockScreenCardBtn.addEventListener("click", () => {
+    dom.emergencyDialog.close();
+    dom.lockScreenCardDialog.showModal();
+    fitLockScreenCardText();
+  });
+  dom.lockScreenCardDialog.addEventListener("click", (event) => {
+    if (event.target === dom.lockScreenCardDialog) {
+      dom.lockScreenCardDialog.close();
+    }
+  });
+  dom.prnLogCancelBtn?.addEventListener("click", () => {
+    pendingPrnLogMedication = null;
+    dom.prnLogDialog?.close();
+  });
+  dom.prnLogConfirmBtn?.addEventListener("click", submitPrnLogDose);
+  dom.prnLogDialog?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submitPrnLogDose();
+    }
+  });
+  dom.prnLogDialog?.addEventListener("close", () => {
+    pendingPrnLogMedication = null;
+  });
+
+  window.addEventListener("beforeunload", (event) => {
+    if (!medicationFormHasPendingChanges()) {
+      return;
+    }
+
+    event.preventDefault();
+    event.returnValue = "";
+  });
 
   dom.shareCaregiverBtn.addEventListener("click", async () => {
     const message = caregiverStatusMessage();
@@ -1639,58 +2475,86 @@ async function applyForceRefreshFlow() {
 }
 
 function shouldRegisterServiceWorker() {
-  return stateApi.shouldRegisterServiceWorker(window.location.search, FORCE_RELOAD_MARKER);
+  return stateApi.shouldRegisterServiceWorker(window.location.search, FORCE_RELOAD_MARKER, window.location.hostname);
 }
 
-if ("serviceWorker" in navigator) {
-  let refreshTriggered = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (refreshTriggered) {
-      return;
-    }
-    refreshTriggered = true;
-    window.location.reload();
-  });
+function isLocalDevelopmentHost() {
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname.toLowerCase());
+}
 
-  window.addEventListener("load", () => {
-    if (!shouldRegisterServiceWorker()) {
-      return;
-    }
-    navigator.serviceWorker.register(`sw.js?v=${APP_BUILD}`).then((registration) => {
-      registration.update();
-      registration.addEventListener("updatefound", () => {
-        const worker = registration.installing;
-        if (!worker) {
-          return;
-        }
-        worker.addEventListener("statechange", () => {
-          if (worker.state === "installed" && navigator.serviceWorker.controller) {
-            worker.postMessage({ type: "SKIP_WAITING" });
-            dom.safetyMessage.textContent = "Updating app to latest version...";
-          }
-        });
-      });
-    }).catch(() => {
-      // If registration fails, the app still works as a normal website.
+window.__medicationFormTestApi = {
+  medicationFormHasPendingChanges,
+  setMedicationFormDirty,
+  abandonMedicationChanges,
+  requestCloseAllWindows,
+  selectMedicationSearchMatch,
+  switchUser,
+  getActiveProfileId: () => state.activeProfileId,
+  clearMedicationSavedStatus,
+  cancelMedicationFormJump,
+  scheduleMedicationFormJump,
+  setEditingMedicationId: (id) => {
+    editingMedicationId = id;
+  }
+};
+
+if (!window.__skipAppBootstrap) {
+  if ("serviceWorker" in navigator) {
+    let refreshTriggered = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshTriggered) {
+        return;
+      }
+      refreshTriggered = true;
+      window.location.reload();
     });
+
+    window.addEventListener("load", () => {
+      if (isLocalDevelopmentHost()) {
+        Promise.all([clearOfflineCaches(), unregisterServiceWorkers()]);
+        return;
+      }
+      if (!shouldRegisterServiceWorker()) {
+        return;
+      }
+      navigator.serviceWorker.register(`sw.js?v=${APP_BUILD}`).then((registration) => {
+        registration.update();
+        registration.addEventListener("updatefound", () => {
+          const worker = registration.installing;
+          if (!worker) {
+            return;
+          }
+          worker.addEventListener("statechange", () => {
+            if (worker.state === "installed" && navigator.serviceWorker.controller) {
+              worker.postMessage({ type: "SKIP_WAITING" });
+              dom.safetyMessage.textContent = "Updating app to latest version...";
+            }
+          });
+        });
+      }).catch(() => {
+        // If registration fails, the app still works as a normal website.
+      });
+    });
+  }
+
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+
+  applyForceRefreshFlow().then((reloading) => {
+    if (reloading) {
+      return;
+    }
+    setupCollapsibleCards();
+    bindCardToggleDelegation();
+    attachPerToggleListeners();
+    bindEvents();
+    resetProcedureEditMode();
+    resetBloodPressureForm();
+    resetBloodPressureEditMode();
+    renderAll();
+    if (ENABLE_POPUP_REMINDERS) {
+      window.setInterval(checkDueAlarms, 30000);
+    }
   });
 }
-
-if ("Notification" in window && Notification.permission === "default") {
-  Notification.requestPermission();
-}
-
-applyForceRefreshFlow().then((reloading) => {
-  if (reloading) {
-    return;
-  }
-  setupCollapsibleCards();
-  bindCardToggleDelegation();
-  attachPerToggleListeners();
-  bindEvents();
-  resetProcedureEditMode();
-  renderAll();
-  if (ENABLE_POPUP_REMINDERS) {
-    window.setInterval(checkDueAlarms, 30000);
-  }
-});
