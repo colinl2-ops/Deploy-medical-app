@@ -6,8 +6,8 @@ const LEGACY_MED_LIST_KEY = "medications-v1";
 const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260729-142111";
-const APP_RELEASE_LABEL = "Flag569";
+const APP_BUILD = "20260801-065709";
+const APP_RELEASE_LABEL = "Flag 61";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -723,6 +723,14 @@ function minHoursBetweenDoses(med) {
   return stateApi.minHoursBetweenDoses(med);
 }
 
+function stayOnMedicationAfterDoseLog(medId) {
+  if (!medId) {
+    return;
+  }
+
+  rendererApi.jumpToMedication(medId, { behavior: "auto", scrollDelay: 0, prioritize: true });
+}
+
 function markDose(dose, status, options = {}) {
   const med = findMed(dose.medId);
   const doseQuantity = med ? getDoseQuantityForTime(med, dose.time) : 1;
@@ -759,6 +767,7 @@ function markDose(dose, status, options = {}) {
   saveState();
   hideAlarm();
   renderAll();
+  stayOnMedicationAfterDoseLog(med.id);
 }
 
 function snoozeDose(dose) {
@@ -813,6 +822,7 @@ function submitPrnLogDose() {
   pendingPrnLogMedication = null;
   dom.prnLogDialog?.close();
   renderAll();
+  stayOnMedicationAfterDoseLog(med.id);
   dom.safetyMessage.textContent = minutesAgo > 0
     ? `Logged ${med.name} ${minutesAgo} minute${minutesAgo === 1 ? "" : "s"} ago at ${dose.time}.`
     : `Logged ${med.name} at ${dose.time}.`;
