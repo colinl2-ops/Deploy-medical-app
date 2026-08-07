@@ -161,6 +161,27 @@
       const safetyWarning = checkSafetyForNewMed(med, existingMed?.id || null);
       dom.safetyMessage.textContent = safetyWarning;
       if (existingMed) {
+        const oldTimes = Array.isArray(existingMed.times) ? existingMed.times : [];
+        const todayKey = toDateKey(new Date());
+        if (oldTimes.length === med.times.length) {
+          oldTimes.forEach((oldTime, index) => {
+            const newTime = med.times[index];
+            if (oldTime === newTime) {
+              return;
+            }
+
+            const existingNewTimeDose = state.doses.find((dose) => (
+              dose.medId === existingMed.id && dose.dateKey === todayKey && dose.time === newTime
+            ));
+            const doseToMove = state.doses.find((dose) => (
+              dose.medId === existingMed.id && dose.dateKey === todayKey && dose.time === oldTime
+            ));
+            if (doseToMove && !existingNewTimeDose) {
+              doseToMove.time = newTime;
+              doseToMove.id = `${doseToMove.medId}|${doseToMove.dateKey}|${newTime}`;
+            }
+          });
+        }
         // capture previous photo for undo if removed
         const prevPhoto = existingMed.photoDataUrl || "";
         state.medications = state.medications.map((entry) => (entry.id === existingMed.id ? med : entry));

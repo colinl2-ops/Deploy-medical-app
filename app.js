@@ -6,8 +6,8 @@ const LEGACY_MED_LIST_KEY = "medications-v1";
 const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260801-065709";
-const APP_RELEASE_LABEL = "Flag 61";
+const APP_BUILD = "20260807-100717";
+const APP_RELEASE_LABEL = "Flag 62";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -759,6 +759,9 @@ function markDose(dose, status, options = {}) {
       }
     }
     med.stock = Math.max(0, Number(med.stock) - doseQuantity);
+    dose.takenQuantity = doseQuantity;
+  } else if (status === "skipped" && dose.status === "taken") {
+    stateApi.untakeDose(state, dose);
   }
 
   dose.status = status;

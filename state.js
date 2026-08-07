@@ -368,6 +368,13 @@
       return Number.isFinite(fallback) && fallback > 0 ? fallback : 1;
     };
 
+    const takenQuantityForDose = function(med, dose) {
+      const recorded = Number(dose?.takenQuantity);
+      return Number.isFinite(recorded) && recorded > 0
+        ? recorded
+        : getDoseQuantityForTime(med, dose?.time);
+    };
+
     const doseUnit = function(med) {
       switch (med.form) {
         case "cream": return "application(s)";
@@ -589,9 +596,10 @@
       const id = `${med.id}|${dateKey}|prn-${takenAt.getTime()}`;
       const takenAtIso = takenAt.toISOString();
       const loggedAtIso = loggedAt.toISOString();
-      const dose = { id, profileId: state.activeProfileId, medId: med.id, dateKey, time, status: 'taken', snoozedUntil: null, timestamp: takenAtIso, loggedAt: loggedAtIso };
+      const takenQuantity = getDoseQuantityForTime(med, time);
+      const dose = { id, profileId: state.activeProfileId, medId: med.id, dateKey, time, status: 'taken', snoozedUntil: null, timestamp: takenAtIso, loggedAt: loggedAtIso, takenQuantity };
       state.doses.push(dose);
-      med.stock = Math.max(0, Number(med.stock) - getDoseQuantityForTime(med, time));
+      med.stock = Math.max(0, Number(med.stock) - takenQuantity);
       save();
       return dose;
     };
@@ -619,7 +627,10 @@
       if (overdue.length === 0) return 0;
       overdue.forEach((dose) => {
         const med = findMed(state, dose.medId);
-        if (med) med.stock = Math.max(0, Number(med.stock) - getDoseQuantityForTime(med, dose.time));
+        if (med) {
+          dose.takenQuantity = getDoseQuantityForTime(med, dose.time);
+          med.stock = Math.max(0, Number(med.stock) - dose.takenQuantity);
+        }
         dose.status = 'taken';
         dose.timestamp = new Date().toISOString();
         dose.snoozedUntil = null;
@@ -632,10 +643,11 @@
 
     const untakeDose = function(state, dose) {
       const med = findMed(state, dose.medId);
-      if (dose.status === 'taken' && med) med.stock = Number(med.stock) + getDoseQuantityForTime(med, dose.time);
+      if (dose.status === 'taken' && med) med.stock = Number(med.stock) + takenQuantityForDose(med, dose);
       dose.status = 'pending';
       dose.timestamp = null;
       dose.snoozedUntil = null;
+      dose.takenQuantity = null;
       return dose;
     };
 
@@ -657,7 +669,8 @@
       target.forEach((dose) => {
         const med = findMed(state, dose.medId);
         if (med) {
-          med.stock = Math.max(0, Number(med.stock) - getDoseQuantityForTime(med, dose.time));
+          dose.takenQuantity = getDoseQuantityForTime(med, dose.time);
+          med.stock = Math.max(0, Number(med.stock) - dose.takenQuantity);
         }
         dose.status = "taken";
         dose.timestamp = new Date().toISOString();
