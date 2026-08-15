@@ -6,8 +6,8 @@ const LEGACY_MED_LIST_KEY = "medications-v1";
 const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260807-100717";
-const APP_RELEASE_LABEL = "Flag 62";
+const APP_BUILD = "20260815-111756";
+const APP_RELEASE_LABEL = "Flag 63";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -958,6 +958,14 @@ function resetProcedureEditMode() {
   }
 }
 
+function resetProcedureForm() {
+  dom.procedureForm.reset();
+  const dateField = dom.procedureForm.querySelector('[name="procedureDate"]');
+  if (dateField) {
+    dateField.value = toDateKey(new Date());
+  }
+}
+
 function currentDatetimeLocalValue() {
   const now = new Date();
   const offsetMilliseconds = now.getTimezoneOffset() * 60 * 1000;
@@ -1449,6 +1457,7 @@ function emergencyDoseAbbrev(med) {
 function updateMedicalCard() {
   const profile = getActiveProfile();
   const meds = activeMedsForActiveProfile();
+  const sortedMeds = stateApi.sortMedsForEmergencyCard(meds);
   const emergencyContact = [profile.emergencyContactName, profile.emergencyPhone]
     .filter(Boolean)
     .join(": ") || "Not recorded";
@@ -1461,8 +1470,8 @@ function updateMedicalCard() {
     `Conditions: ${profile.conditions || "None known"}`,
     `Allergies: ${profile.allergies || "None known"}`,
     "",
-    meds.length
-      ? `Medicines: ${meds.map((med) => `${med.frequency === "asRequired" ? "* " : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`).join("; ")}${meds.some((med) => med.frequency === "asRequired") ? " [* means as needed]" : ""}`
+    sortedMeds.length
+      ? `Medicines: ${sortedMeds.map((med) => `${med.frequency === "asRequired" ? "* " : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`).join("; ")}${sortedMeds.some((med) => med.frequency === "asRequired") ? " [* means as needed]" : ""}`
       : "Medicines: None recorded",
   ].join("\n");
   dom.emergencyCallLink.href = profile.emergencyPhone ? `tel:${profile.emergencyPhone}` : "#";
@@ -2210,12 +2219,13 @@ function bindEvents() {
       validateProcedureInput,
       saveState,
       resetProcedureEditMode,
+      resetProcedureForm,
       renderAll
     });
   });
 
   dom.procedureCancelEditBtn?.addEventListener("click", () => {
-    dom.procedureForm.reset();
+    resetProcedureForm();
     resetProcedureEditMode();
     dom.procedureMessage.textContent = "Edit cancelled.";
   });
@@ -2562,6 +2572,7 @@ if (!window.__skipAppBootstrap) {
     bindCardToggleDelegation();
     attachPerToggleListeners();
     bindEvents();
+    resetProcedureForm();
     resetProcedureEditMode();
     resetBloodPressureForm();
     resetBloodPressureEditMode();

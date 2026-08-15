@@ -729,6 +729,17 @@
       return ` (${qty}/day)`;
     }
 
+    function sortMedsForEmergencyCard(meds) {
+      return meds.slice().sort((firstMed, secondMed) => {
+        const firstIsAsRequired = firstMed.frequency === "asRequired";
+        const secondIsAsRequired = secondMed.frequency === "asRequired";
+        if (firstIsAsRequired === secondIsAsRequired) {
+          return 0;
+        }
+        return firstIsAsRequired ? 1 : -1;
+      });
+    }
+
     function buildRefillAlertMessages(meds, thresholds = [7, 3, 1]) {
       const messages = [];
       meds.forEach((med) => {
@@ -743,8 +754,9 @@
     }
 
     const buildMedicalCardText = function(profile, meds) {
-      const hasAsRequired = meds.some((med) => med.frequency === "asRequired");
-      const medsLabel = meds
+      const sortedMeds = sortMedsForEmergencyCard(meds);
+      const hasAsRequired = sortedMeds.some((med) => med.frequency === "asRequired");
+      const medsLabel = sortedMeds
         .map((med) => `${med.frequency === "asRequired" ? "*" : ""}${med.name} ${med.strength}${emergencyDoseAbbrev(med)}`)
         .join(", ") || "None";
       const asRequiredNote = hasAsRequired ? " | * means as needed" : "";
@@ -1261,6 +1273,7 @@
       repeatsCount,
       refillFlag,
       emergencyDoseAbbrev,
+      sortMedsForEmergencyCard,
       buildRefillAlertMessages,
       buildMedicalCardText,
       caregiverStatusMessage,

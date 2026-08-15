@@ -222,6 +222,7 @@
         validateProcedureInput,
         saveState,
         resetProcedureEditMode,
+        resetProcedureForm,
         renderAll
       } = context;
 
@@ -255,7 +256,11 @@
       }
 
       saveState();
-      dom.procedureForm.reset();
+      if (typeof resetProcedureForm === "function") {
+        resetProcedureForm();
+      } else {
+        dom.procedureForm.reset();
+      }
       resetProcedureEditMode();
       renderAll();
     }
