@@ -656,7 +656,7 @@
     function markAllByPeriodTaken(state, period, context = {}) {
       const today = createDueDosesForDate(state, new Date(), context);
       const target = today.filter((dose) => {
-        if (dose.status === "taken") {
+        if (dose.status !== "pending") {
           return false;
         }
         return period === "morning" ? isMorningDose(dose) : !isMorningDose(dose);

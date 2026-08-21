@@ -6,8 +6,8 @@ const LEGACY_MED_LIST_KEY = "medications-v1";
 const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260815-111756";
-const APP_RELEASE_LABEL = "Flag 63";
+const APP_BUILD = "20260821-203806";
+const APP_RELEASE_LABEL = "Flag 64";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -880,6 +880,12 @@ function isMorningDose(dose) {
 }
 
 function markAllByPeriodTaken(period) {
+  const confirmed = window.confirm(`Mark all pending ${period} doses as taken?`);
+  if (!confirmed) {
+    dom.safetyMessage.textContent = `No ${period} doses were changed.`;
+    return;
+  }
+
   const markedCount = stateApi.markAllByPeriodTaken(state, period, {
     medsForActiveProfile,
     saveState,
