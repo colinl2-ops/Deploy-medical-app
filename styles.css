@@ -83,6 +83,7 @@ main {
 }
 
 .card {
+  min-width: 0;
   border: 2px solid #d6e4ea;
   border-radius: 18px;
   background: var(--surface);
@@ -373,40 +374,18 @@ button:disabled {
 }
 
 .timeline-toolbar {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin: 0 0 0.9rem;
-  padding-top: 9.8rem;
 }
 
 .timeline-toolbar > .button-row:first-child {
-  position: fixed;
-  top: 0.5rem;
-  left: 1rem;
-  right: 1rem;
-  z-index: 4;
-  width: min(1160px, calc(100vw - 2rem));
-  margin: 0 auto 0.45rem;
-  padding: 0.65rem 0.75rem 0.55rem;
-  border: 1px solid #d6e4ea;
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255, 253, 249, 0.98) 0%, rgba(255, 253, 249, 0.92) 100%);
-  box-shadow: 0 8px 18px rgba(15, 76, 92, 0.12);
-  backdrop-filter: blur(4px);
+  margin-bottom: 0.45rem;
 }
 
 .timeline-toolbar > #todayTimelineActions {
-  position: fixed;
-  top: 5.25rem;
-  left: 1rem;
-  right: 1rem;
-  z-index: 3;
-  width: min(1160px, calc(100vw - 2rem));
-  margin: 0 auto 0.45rem;
-  padding: 0.55rem 0.75rem 0.7rem;
-  border: 1px solid #d6e4ea;
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255, 253, 249, 0.98) 0%, rgba(255, 253, 249, 0.92) 100%);
-  box-shadow: 0 8px 18px rgba(15, 76, 92, 0.12);
-  backdrop-filter: blur(4px);
+  padding-bottom: 0.2rem;
 }
 
 .timeline-toolbar > .button-row:first-child + .button-row {
@@ -415,6 +394,9 @@ button:disabled {
 
 #todayTimelineActions {
   display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
@@ -430,18 +412,11 @@ button:disabled {
 }
 
 @media (max-width: 760px) {
-  .timeline-toolbar {
-    padding-top: 10.4rem;
-  }
-
   .timeline-toolbar > .button-row:first-child {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.4rem;
-    left: 0.75rem;
-    right: 0.75rem;
-    width: min(1160px, calc(100vw - 1.5rem));
-    padding: 0.55rem 0.65rem 0.5rem;
+    padding-bottom: 0.25rem;
   }
 
   .timeline-toolbar > .button-row:first-child button {
@@ -450,14 +425,6 @@ button:disabled {
     padding: 0.55rem;
     white-space: normal;
     line-height: 1.2;
-  }
-
-  .timeline-toolbar > #todayTimelineActions {
-    top: 6.4rem;
-    left: 0.75rem;
-    right: 0.75rem;
-    width: min(1160px, calc(100vw - 1.5rem));
-    padding: 0.5rem 0.65rem 0.65rem;
   }
 
   #todayTimelineActions button {
