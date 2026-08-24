@@ -6,8 +6,8 @@ const LEGACY_MED_LIST_KEY = "medications-v1";
 const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260821-203806";
-const APP_RELEASE_LABEL = "Flag 64";
+const APP_BUILD = "20260824-194848";
+const APP_RELEASE_LABEL = "Flag 65";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -1719,12 +1719,13 @@ function setupCollapsibleCards() {
     const toggleBtn = document.createElement("button");
     toggleBtn.type = "button";
     toggleBtn.className = "card-toggle";
-    toggleBtn.setAttribute("aria-expanded", "false");
+    const startsExpanded = card.dataset.startExpanded === "true";
+    toggleBtn.setAttribute("aria-expanded", String(startsExpanded));
     toggleBtn.setAttribute("aria-controls", panelId);
     toggleBtn.innerHTML = `<span class="card-toggle-title">${heading.textContent || "Section"}</span><span class="card-toggle-icon" aria-hidden="true">▾</span>`;
     heading.replaceWith(toggleBtn);
 
-    card.classList.add("is-collapsed");
+    card.classList.toggle("is-collapsed", !startsExpanded);
 
     const content = document.createElement("div");
     content.className = "card-content";
