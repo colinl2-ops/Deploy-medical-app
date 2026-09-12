@@ -373,6 +373,18 @@ button:disabled {
   gap: 0.55rem;
 }
 
+.procedure-filter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.procedure-filter input {
+  width: 100%;
+}
+
 .timeline-toolbar {
   width: 100%;
   min-width: 0;
@@ -846,6 +858,10 @@ dialog::backdrop {
   }
 
   .grid-form {
+    grid-template-columns: 1fr;
+  }
+
+  .procedure-filter {
     grid-template-columns: 1fr;
   }
 

@@ -34,7 +34,8 @@
         setEditingProcedureId,
         state,
         saveState,
-        renderAll
+        renderAll,
+        hasProcedureFilter = false
       } = context;
 
       const sortedProcedures = procedures
@@ -52,7 +53,9 @@
       if (sortedProcedures.length === 0) {
         const empty = document.createElement("p");
         empty.className = "summary";
-        empty.textContent = "No procedures recorded for this user yet.";
+        empty.textContent = hasProcedureFilter
+          ? "No matching procedures."
+          : "No procedures recorded for this user yet.";
         dom.procedureList.appendChild(empty);
         return;
       }

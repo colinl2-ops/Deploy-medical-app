@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
-    <link rel="stylesheet" href="styles.css?v=20260824-200124" />
+    <link rel="stylesheet" href="styles.css?v=20260912-130703" />
     <title>Medication Helper</title>
   </head>
   <body>
@@ -302,6 +302,16 @@
           </div>
         </form>
         <p id="procedureMessage" class="warn-text" aria-live="polite"></p>
+        <form id="procedureFilterForm" class="procedure-filter" role="search">
+          <label for="procedureFilterInput">
+            Filter procedures
+            <input id="procedureFilterInput" type="search" placeholder="Date, procedure, doctor, or notes" aria-controls="procedureList" />
+          </label>
+          <div class="button-row">
+            <button class="primary-btn" type="submit">Filter</button>
+            <button id="clearProcedureFilterBtn" class="secondary-btn" type="button">Clear</button>
+          </div>
+        </form>
         <div class="button-row">
           <button id="exportProcedureCsvBtn" class="secondary-btn" type="button">Export Procedures CSV</button>
         </div>
@@ -472,9 +482,9 @@
       </article>
     </template>
 
-    <script src="state.js?v=20260824-200124" defer></script>
-    <script src="forms.js?v=20260824-200124" defer></script>
-    <script src="renderer.js?v=20260824-200124" defer></script>
-    <script src="app.js?v=20260824-200124" defer></script>
+    <script src="state.js?v=20260912-130703" defer></script>
+    <script src="forms.js?v=20260912-130703" defer></script>
+    <script src="renderer.js?v=20260912-130703" defer></script>
+    <script src="app.js?v=20260912-130703" defer></script>
   </body>
 </html>

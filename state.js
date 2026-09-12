@@ -1122,6 +1122,20 @@
       return rows;
     };
 
+    function filterProcedures(procedures, query) {
+      const normalizedQuery = String(query || "").trim().toLowerCase();
+      if (!normalizedQuery) {
+        return procedures.slice();
+      }
+
+      return procedures.filter((procedure) => [
+        procedure.date,
+        procedure.procedureName,
+        procedure.doctorName,
+        procedure.notes
+      ].some((value) => String(value || "").toLowerCase().includes(normalizedQuery)));
+    }
+
     function checkSafetyForNewMed(newMed, context = {}, excludeMedId = null) {
       const existing = context.existingMeds || [];
       const duplicate = existing.find(
@@ -1295,6 +1309,7 @@
       shouldRegisterServiceWorker,
       buildMedicationCsvRows,
       buildProceduresCsvRows,
+      filterProcedures,
       checkSafetyForNewMed,
       validateProcedureInput,
       parseWeeklyDays,

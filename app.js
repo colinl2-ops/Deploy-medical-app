@@ -4,9 +4,10 @@ const LEGACY_MEDS_BACKUP_KEY = "med-helper-meds-v1";
 const LEGACY_RECOVERY_SNAPSHOT_KEY = "med-helper-recovery-v1";
 const LEGACY_MED_LIST_KEY = "medications-v1";
 const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
+const PROCEDURE_FILTER_STORAGE_KEY = "med-helper-procedure-filter-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260824-200124";
+const APP_BUILD = "20260912-130703";
 const APP_RELEASE_LABEL = "Flag 66";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
@@ -48,6 +49,9 @@ const dom = {
   medTimesPresetButton: document.querySelector("[data-timing-picker='medTimesPresetButton']"),
   medDosePlanPresetButton: document.querySelector("[data-timing-picker='medDosePlanPresetButton']"),
   procedureForm: byId("procedureForm"),
+  procedureFilterForm: byId("procedureFilterForm"),
+  procedureFilterInput: byId("procedureFilterInput"),
+  clearProcedureFilterBtn: byId("clearProcedureFilterBtn"),
   bpForm: byId("bpForm"),
   profileForm: byId("profileForm"),
   medList: byId("medList"),
@@ -171,6 +175,48 @@ let medicationFormSyncing = false;
 let medicationStatusTimeoutId = null;
 let medicationFormJumpTimeoutId = null;
 let pendingPrnLogMedication = null;
+let procedureFilterQuery = loadProcedureFilterQuery();
+
+if (dom.procedureFilterInput) {
+  dom.procedureFilterInput.value = procedureFilterQuery;
+}
+
+function loadProcedureFilterQuery() {
+  try {
+    return String(localStorage.getItem(PROCEDURE_FILTER_STORAGE_KEY) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function persistProcedureFilterQuery() {
+  try {
+    if (procedureFilterQuery) {
+      localStorage.setItem(PROCEDURE_FILTER_STORAGE_KEY, procedureFilterQuery);
+    } else {
+      localStorage.removeItem(PROCEDURE_FILTER_STORAGE_KEY);
+    }
+  } catch {
+    // Filtering still works for this session when storage is unavailable.
+  }
+}
+
+function clearProcedureFilter() {
+  procedureFilterQuery = "";
+  if (dom.procedureFilterInput) {
+    dom.procedureFilterInput.value = "";
+  }
+  persistProcedureFilterQuery();
+}
+
+function applyProcedureFilter() {
+  procedureFilterQuery = String(dom.procedureFilterInput?.value || "").trim();
+  if (dom.procedureFilterInput) {
+    dom.procedureFilterInput.value = procedureFilterQuery;
+  }
+  persistProcedureFilterQuery();
+  renderProcedures();
+}
 
 function medicationFormHasPendingChanges() {
   return medicationFormIsDirty || editingMedicationId !== null;
@@ -1000,7 +1046,8 @@ function resetBloodPressureEditMode() {
 }
 
 function renderProcedures() {
-  rendererApi.renderProcedures(proceduresForActiveProfile(), {
+  const procedures = stateApi.filterProcedures(proceduresForActiveProfile(), procedureFilterQuery);
+  rendererApi.renderProcedures(procedures, {
     dom,
     procedureSortKey: stateApi.procedureSortKey,
     setEditingProcedureId: (id) => {
@@ -1008,7 +1055,8 @@ function renderProcedures() {
     },
     state,
     saveState,
-    renderAll
+    renderAll,
+    hasProcedureFilter: Boolean(procedureFilterQuery)
   });
 }
 
@@ -1697,6 +1745,7 @@ function switchUser() {
   }
   const currentIndex = state.profiles.findIndex((profile) => profile.id === state.activeProfileId);
   const nextIndex = (currentIndex + 1) % state.profiles.length;
+  clearProcedureFilter();
   state.activeProfileId = state.profiles[nextIndex].id;
   saveState();
   renderAll();
@@ -1965,6 +2014,7 @@ function bindEvents() {
     const second = defaultProfile();
     second.name = "Second User";
     state.profiles.push(second);
+    clearProcedureFilter();
     state.activeProfileId = second.id;
     saveState();
     renderAll();
@@ -2273,6 +2323,17 @@ function bindEvents() {
     dom.bpMessage.textContent = "Edit cancelled.";
   });
 
+  dom.procedureFilterForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    applyProcedureFilter();
+  });
+
+  dom.clearProcedureFilterBtn?.addEventListener("click", () => {
+    clearProcedureFilter();
+    renderProcedures();
+    dom.procedureFilterInput?.focus();
+  });
+
   dom.alarmTakenBtn.addEventListener("click", () => {
     resolveActiveAlarm("taken");
   });
@@ -2519,6 +2580,9 @@ window.__medicationFormTestApi = {
   requestCloseAllWindows,
   selectMedicationSearchMatch,
   switchUser,
+  applyProcedureFilter,
+  clearProcedureFilter,
+  getProcedureFilterQuery: () => procedureFilterQuery,
   getActiveProfileId: () => state.activeProfileId,
   clearMedicationSavedStatus,
   cancelMedicationFormJump,
