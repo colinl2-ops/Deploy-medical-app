@@ -34,8 +34,7 @@
         setEditingProcedureId,
         state,
         saveState,
-        renderAll,
-        hasProcedureFilter = false
+        renderAll
       } = context;
 
       const sortedProcedures = procedures
@@ -53,9 +52,7 @@
       if (sortedProcedures.length === 0) {
         const empty = document.createElement("p");
         empty.className = "summary";
-        empty.textContent = hasProcedureFilter
-          ? "No matching procedures."
-          : "No procedures recorded for this user yet.";
+        empty.textContent = "No procedures recorded for this user yet.";
         dom.procedureList.appendChild(empty);
         return;
       }
@@ -357,10 +354,8 @@
             scheduleBits.push(`PRN gap ${gapHours}h`);
           }
           if (previous?.timestamp) {
-            const previousDate = new Date(previous.timestamp);
-            const elapsedMs = Date.now() - previousDate.getTime();
-            const takenTime = previousDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-            scheduleBits.push(`Last taken at ${takenTime} (${formatDuration(elapsedMs)} ago)`);
+            const elapsedMs = Date.now() - new Date(previous.timestamp).getTime();
+            scheduleBits.push(`Last taken ${formatDuration(elapsedMs)} ago`);
             if (gapHours > 0) {
               const remainingMs = Math.max(0, (gapHours * 60 * 60 * 1000) - elapsedMs);
               scheduleBits.push(remainingMs > 0 ? `Next allowed in ${formatDuration(remainingMs)}` : "Allowed now");

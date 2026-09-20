@@ -545,6 +545,17 @@
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
     }
 
+    function uniqueDosesById(doses) {
+      const seenIds = new Set();
+      return doses.filter((dose) => {
+        if (seenIds.has(dose.id)) {
+          return false;
+        }
+        seenIds.add(dose.id);
+        return true;
+      });
+    }
+
     // Doses are keyed by "medId|dateKey|time", and every scheduled dose is
     // supposed to have at most one record in state.doses. If duplicates ever
     // slip in (e.g. from a legacy bug, a corrupted import, or manual editing
@@ -604,7 +615,6 @@
     function createDueDosesForDate(state, date, context = {}) {
       const key = helpers.toDateKey(date);
       const all = [];
-      const seenIds = new Set();
       const meds = context.medsForActiveProfile || (() => medsForActiveProfile(state));
       const save = context.saveState || (() => saveState(state));
       const doseHistoryDays = Number(context.doseHistoryDays ?? 14);
@@ -619,10 +629,6 @@
 
         med.times.forEach((time) => {
           const id = doseId(med.id, key, time);
-          if (seenIds.has(id)) {
-            return;
-          }
-          seenIds.add(id);
           const existing = state.doses.find((dose) => dose.id === id);
           if (existing) {
             all.push(existing);
@@ -645,7 +651,7 @@
 
       state.doses = state.doses.filter((entry) => entry.dateKey >= helpers.toDateKey(new Date(Date.now() - 1000 * 60 * 60 * 24 * doseHistoryDays)));
       save();
-      return all.sort((a, b) => a.time.localeCompare(b.time));
+      return uniqueDosesById(all).sort((a, b) => a.time.localeCompare(b.time));
     }
 
     const logPrnDose = function(state, med, context = {}) {
@@ -688,12 +694,7 @@
     };
 
     const catchUpOverdueDoses = function(state, context = {}) {
-      const seenIds = new Set();
-      const overdue = overduePendingDoses(state).filter((dose) => {
-        if (seenIds.has(dose.id)) return false;
-        seenIds.add(dose.id);
-        return true;
-      });
+      const overdue = uniqueDosesById(overduePendingDoses(state));
       if (overdue.length === 0) return 0;
       overdue.forEach((dose) => {
         if (dose.status !== 'pending') return;
@@ -726,15 +727,10 @@
 
     function markAllByPeriodTaken(state, period, context = {}) {
       const today = createDueDosesForDate(state, new Date(), context);
-      const seenIds = new Set();
-      const target = today.filter((dose) => {
+      const target = uniqueDosesById(today).filter((dose) => {
         if (dose.status !== "pending") {
           return false;
         }
-        if (seenIds.has(dose.id)) {
-          return false;
-        }
-        seenIds.add(dose.id);
         return period === "morning" ? isMorningDose(dose) : !isMorningDose(dose);
       });
 
