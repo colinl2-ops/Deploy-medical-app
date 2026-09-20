@@ -7,8 +7,8 @@ const BLOOD_PRESSURE_STORAGE_KEY = "med-helper-v3-blood-pressure";
 const PROCEDURE_FILTER_STORAGE_KEY = "med-helper-procedure-filter-v1";
 const FORCE_RELOAD_MARKER = "1";
 const ENABLE_POPUP_REMINDERS = false;
-const APP_BUILD = "20260912-130703";
-const APP_RELEASE_LABEL = "Flag 66";
+const APP_BUILD = "20260920-161826";
+const APP_RELEASE_LABEL = "Flag 7066";
 const REFILL_THRESHOLDS = [7, 3, 1];
 const DOSE_HISTORY_DAYS = 14;
 const INTERACTION_RULES = [
@@ -158,6 +158,10 @@ const formsApi = createFormsApi();
 const rendererApi = createRendererApi();
 
 let state = loadState();
+// If duplicate dose records were found and collapsed during load, capture the
+// summary (and strip the transient marker) before the migrated state is saved.
+const doseRepairOnLoad = state._doseRepair || null;
+delete state._doseRepair;
 // Immediately save to persist any migrations/fixes applied during load
 saveState();
 let deferredPrompt;
@@ -2648,6 +2652,9 @@ if (!window.__skipAppBootstrap) {
     resetBloodPressureForm();
     resetBloodPressureEditMode();
     renderAll();
+    if (doseRepairOnLoad && doseRepairOnLoad.duplicatesRemoved > 0) {
+      dom.safetyMessage.textContent = `Found and fixed ${doseRepairOnLoad.duplicatesRemoved} duplicate dose record(s); restored ${doseRepairOnLoad.pillsRefunded} pill(s) to stock that had been counted as taken more than once.`;
+    }
     if (ENABLE_POPUP_REMINDERS) {
       window.setInterval(checkDueAlarms, 30000);
     }

@@ -34,6 +34,8 @@ body {
   min-height: 100vh;
   color: var(--text);
   font-family: "Atkinson Hyperlegible", "Verdana", sans-serif;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   background:
     radial-gradient(circle at 18% 8%, var(--bg-soft), transparent 48%),
     linear-gradient(180deg, #f9fbfc 0%, var(--bg) 55%, #f8f2e6 100%);
@@ -518,6 +520,7 @@ button:disabled {
 
 .procedure-main {
   flex: 1;
+  min-width: 0;
 }
 
 .procedure-card {
@@ -544,12 +547,12 @@ button:disabled {
 
 .procedure-summary {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.08rem;
+  line-height: 1.4;
   font-weight: 700;
   color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .bp-summary {
@@ -888,6 +891,15 @@ dialog::backdrop {
     width: 100%;
     min-width: 0;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .procedure-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .procedure-card .card-actions {
+    justify-content: flex-end;
   }
 
   .timeline-item .card-actions {

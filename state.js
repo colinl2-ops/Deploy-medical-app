@@ -229,6 +229,10 @@
 
     const finalizeLoadedState = function(loadedState) {
       loadedState.medications = loadedState.medications.map((med) => helpers.fixMedicationDosePlan(med));
+      const repair = dedupeDoseRecords(loadedState);
+      if (repair.duplicatesRemoved > 0) {
+        loadedState._doseRepair = repair;
+      }
       return loadedState;
     };
 
@@ -541,9 +545,66 @@
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
     }
 
+    // Doses are keyed by "medId|dateKey|time", and every scheduled dose is
+    // supposed to have at most one record in state.doses. If duplicates ever
+    // slip in (e.g. from a legacy bug, a corrupted import, or manual editing
+    // of the exported JSON), the batch "take all"/"catch up" flows below would
+    // each independently decrement stock for every duplicate, silently over-
+    // consuming a medication's recorded stock. This collapses each group of
+    // same-id records into one canonical record and refunds any stock that
+    // was decremented more than once for the same real-world dose.
+    function dedupeDoseRecords(state) {
+      const groups = new Map();
+      state.doses.forEach((dose) => {
+        if (!groups.has(dose.id)) {
+          groups.set(dose.id, []);
+        }
+        groups.get(dose.id).push(dose);
+      });
+
+      let duplicatesRemoved = 0;
+      let pillsRefunded = 0;
+      const deduped = [];
+
+      groups.forEach((group) => {
+        if (group.length === 1) {
+          deduped.push(group[0]);
+          return;
+        }
+
+        duplicatesRemoved += group.length - 1;
+
+        const med = findMed(state, group[0].medId);
+        const takenEntries = group.filter((dose) => dose.status === "taken");
+        const canonical = takenEntries.length > 0
+          ? takenEntries.slice().sort((a, b) => {
+              const aTime = a.timestamp ? new Date(a.timestamp).getTime() : Infinity;
+              const bTime = b.timestamp ? new Date(b.timestamp).getTime() : Infinity;
+              return aTime - bTime;
+            })[0]
+          : group[0];
+
+        if (med) {
+          const totalTakenQty = takenEntries.reduce((sum, dose) => sum + takenQuantityForDose(med, dose), 0);
+          const canonicalQty = canonical.status === "taken" ? takenQuantityForDose(med, canonical) : 0;
+          const refund = totalTakenQty - canonicalQty;
+          if (refund > 0) {
+            med.stock = Number(med.stock) + refund;
+            pillsRefunded += refund;
+          }
+        }
+
+        deduped.push(canonical);
+      });
+
+      state.doses = deduped;
+      return { duplicatesRemoved, pillsRefunded };
+    }
+
     function createDueDosesForDate(state, date, context = {}) {
       const key = helpers.toDateKey(date);
       const all = [];
+      const seenIds = new Set();
       const meds = context.medsForActiveProfile || (() => medsForActiveProfile(state));
       const save = context.saveState || (() => saveState(state));
       const doseHistoryDays = Number(context.doseHistoryDays ?? 14);
@@ -558,6 +619,10 @@
 
         med.times.forEach((time) => {
           const id = doseId(med.id, key, time);
+          if (seenIds.has(id)) {
+            return;
+          }
+          seenIds.add(id);
           const existing = state.doses.find((dose) => dose.id === id);
           if (existing) {
             all.push(existing);
@@ -623,9 +688,15 @@
     };
 
     const catchUpOverdueDoses = function(state, context = {}) {
-      const overdue = overduePendingDoses(state);
+      const seenIds = new Set();
+      const overdue = overduePendingDoses(state).filter((dose) => {
+        if (seenIds.has(dose.id)) return false;
+        seenIds.add(dose.id);
+        return true;
+      });
       if (overdue.length === 0) return 0;
       overdue.forEach((dose) => {
+        if (dose.status !== 'pending') return;
         const med = findMed(state, dose.medId);
         if (med) {
           dose.takenQuantity = getDoseQuantityForTime(med, dose.time);
@@ -655,10 +726,15 @@
 
     function markAllByPeriodTaken(state, period, context = {}) {
       const today = createDueDosesForDate(state, new Date(), context);
+      const seenIds = new Set();
       const target = today.filter((dose) => {
         if (dose.status !== "pending") {
           return false;
         }
+        if (seenIds.has(dose.id)) {
+          return false;
+        }
+        seenIds.add(dose.id);
         return period === "morning" ? isMorningDose(dose) : !isMorningDose(dose);
       });
 
@@ -667,6 +743,9 @@
       }
 
       target.forEach((dose) => {
+        if (dose.status !== "pending") {
+          return;
+        }
         const med = findMed(state, dose.medId);
         if (med) {
           dose.takenQuantity = getDoseQuantityForTime(med, dose.time);
@@ -1276,6 +1355,7 @@
       findMed,
       lastTakenForMed,
       createDueDosesForDate,
+      dedupeDoseRecords,
       logPrnDose,
       overduePendingDoses,
       backfillRecentDoseHistory,
