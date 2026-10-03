@@ -373,10 +373,8 @@
     };
 
     const takenQuantityForDose = function(med, dose) {
-      const recorded = Number(dose?.takenQuantity);
-      return Number.isFinite(recorded) && recorded > 0
-        ? recorded
-        : getDoseQuantityForTime(med, dose?.time);
+      const recorded = Number(dose?.takenQuantity ?? dose?.recordedQuantity ?? dose?.quantity ?? dose?.doseQuantity);
+      return Number.isFinite(recorded) && recorded > 0 ? recorded : 0;
     };
 
     const doseUnit = function(med) {
