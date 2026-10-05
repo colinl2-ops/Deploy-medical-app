@@ -2,6 +2,12 @@
   function createRendererApi() {
     const WEEKDAY_SHORT_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+    function safeScrollIntoView(element, options) {
+      if (element && typeof element.scrollIntoView === "function") {
+        element.scrollIntoView(options);
+      }
+    }
+
     function toDatetimeLocalValue(date) {
       const value = date instanceof Date ? date : new Date(date);
       const offsetMs = value.getTimezoneOffset() * 60 * 1000;
@@ -75,7 +81,7 @@
             dom.procedureCancelEditBtn.classList.remove("hidden");
           }
           dom.procedureMessage.textContent = `Editing procedure: ${procedure.procedureName}.`;
-          dom.procedureForm.scrollIntoView({ behavior: "smooth", block: "start" });
+          safeScrollIntoView(dom.procedureForm, { behavior: "smooth", block: "start" });
         });
 
         node.querySelector(".procedure-delete-btn").addEventListener("click", () => {
@@ -133,7 +139,7 @@
           dom.bpSubmitBtn.textContent = "Save Changes";
           dom.bpCancelEditBtn.classList.remove("hidden");
           dom.bpMessage.textContent = "Editing blood pressure reading.";
-          dom.bpForm.scrollIntoView({ behavior: "smooth", block: "start" });
+          safeScrollIntoView(dom.bpForm, { behavior: "smooth", block: "start" });
         });
 
         node.querySelector(".bp-delete-btn").addEventListener("click", () => {
