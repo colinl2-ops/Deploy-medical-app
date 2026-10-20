@@ -149,6 +149,9 @@
       if (!dose || !dose.timestamp) {
         return dose;
       }
+      if (dose.dateKey && !String(dose.id || "").includes("|prn-")) {
+        return dose;
+      }
 
       const timestampDate = new Date(dose.timestamp);
       if (Number.isNaN(timestampDate.getTime())) {
@@ -518,17 +521,17 @@
     }
 
     const includesDay = function(med, date) {
-      const start = new Date(`${med.startDate}T00:00:00`);
-      const targetDateKey = date.toISOString().slice(0, 10);
-      const target = new Date(`${targetDateKey}T00:00:00`);
+      const start = new Date(`${med.startDate}T00:00:00Z`);
+      const targetDateKey = helpers.toDateKey(date);
+      const target = new Date(`${targetDateKey}T00:00:00Z`);
       const dayDiff = Math.floor((target - start) / (1000 * 60 * 60 * 24));
       if (dayDiff < 0) return false;
       if (med.frequency === "asRequired") return false;
       if (med.frequency === "everyOtherDay") return dayDiff % 2 === 0;
       if (med.frequency === "weekly") {
         const weekly = med.weeklyDays || [];
-        if (weekly.length === 0) return target.getDay() === start.getDay();
-        return weekly.includes(target.getDay());
+        if (weekly.length === 0) return target.getUTCDay() === start.getUTCDay();
+        return weekly.includes(target.getUTCDay());
       }
       return true;
     };
@@ -616,38 +619,51 @@
       const meds = context.medsForActiveProfile || (() => medsForActiveProfile(state));
       const save = context.saveState || (() => saveState(state));
       const doseHistoryDays = Number(context.doseHistoryDays ?? 14);
+      const existingById = new Map(state.doses.map((dose) => [dose.id, dose]));
 
       meds().forEach((med) => {
-        if (med.status === "stopped") {
-          return;
-        }
-        if (!includesDay(med, date)) {
+        if (med.status === "stopped" || med.frequency === "asRequired") {
           return;
         }
 
-        med.times.forEach((time) => {
-          const id = doseId(med.id, key, time);
-          const existing = state.doses.find((dose) => dose.id === id);
-          if (existing) {
-            all.push(existing);
-          } else {
-            const created = {
-              id,
-              profileId: state.activeProfileId,
-              medId: med.id,
-              dateKey: key,
-              time,
-              status: "pending",
-              snoozedUntil: null,
-              timestamp: null
-            };
-            state.doses.push(created);
-            all.push(created);
-          }
-        });
+        const lastKnownKey = med.scheduleGeneratedThrough || state.doses
+          .filter((dose) => dose.medId === med.id)
+          .reduce((latest, dose) => dose.dateKey > latest ? dose.dateKey : latest, "");
+        const cursor = new Date(`${lastKnownKey && lastKnownKey < key ? lastKnownKey : key}T12:00:00`);
+        if (lastKnownKey && lastKnownKey < key) cursor.setDate(cursor.getDate() + 1);
+        for (; helpers.toDateKey(cursor) <= key; cursor.setDate(cursor.getDate() + 1)) {
+          const scheduledKey = helpers.toDateKey(cursor);
+          if (!includesDay(med, cursor)) continue;
+          med.times.forEach((time) => {
+            const id = doseId(med.id, scheduledKey, time);
+            let dose = existingById.get(id);
+            if (!dose) {
+              dose = {
+                id,
+                profileId: state.activeProfileId,
+                medId: med.id,
+                dateKey: scheduledKey,
+                time,
+                status: "pending",
+                snoozedUntil: null,
+                timestamp: null
+              };
+              state.doses.push(dose);
+              existingById.set(id, dose);
+            }
+            if (scheduledKey === key) all.push(dose);
+          });
+        }
+        if (!lastKnownKey || lastKnownKey < key) {
+          med.scheduleGeneratedThrough = key;
+        } else if (!med.scheduleGeneratedThrough) {
+          med.scheduleGeneratedThrough = lastKnownKey;
+        }
       });
 
-      state.doses = state.doses.filter((entry) => entry.dateKey >= helpers.toDateKey(new Date(Date.now() - 1000 * 60 * 60 * 24 * doseHistoryDays)));
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - doseHistoryDays);
+      state.doses = state.doses.filter((entry) => entry.status === "pending" || entry.dateKey >= helpers.toDateKey(cutoff));
       save();
       return uniqueDosesById(all).sort((a, b) => a.time.localeCompare(b.time));
     }
@@ -705,7 +721,7 @@
         dose.timestamp = new Date().toISOString();
         dose.snoozedUntil = null;
       });
-      saveState(state);
+      (context.saveState || (() => saveState(state)))();
       return overdue.length;
     };
 
